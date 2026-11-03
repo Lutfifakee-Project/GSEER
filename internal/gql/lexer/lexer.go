@@ -76,15 +76,15 @@ const (
 	// Case-insensitive keyword forms (SPEC-04 §2).  The parser applies
 	// the AND/OR/NOT → &&/||/! sugar; the operator keywords keep their
 	// names (CONTAINS, IN_CIDR, IN_DOMAIN are real operators, not sugar).
-	KW_AND       // and
-	KW_OR        // or
-	KW_NOT       // not
-	KW_IN        // in   (IN lists; parser bounds list length ≤ 256)
-	KW_ANY       // any  (quantified block; validator gates support)
-	KW_ALL       // all  (parses; validator rejects in v0.0.1)
-	KW_CONTAINS  // contains
-	KW_IN_CIDR   // in_cidr
-	KW_IN_DOMAIN // in_domain
+	KwAnd      // and
+	KwOr       // or
+	KwNot      // not
+	KwIn       // in   (IN lists; parser bounds list length ≤ 256)
+	KwAny      // any  (quantified block; validator gates support)
+	KwAll      // all  (parses; validator rejects in v0.0.1)
+	KwContains // contains
+	KwInCIDR   // in_cidr
+	KwInDomain // in_domain
 )
 
 // kindNames powers Kind.String and the "did you mean"-style hints.
@@ -93,9 +93,9 @@ var kindNames = map[Kind]string{
 	LPAREN: "LPAREN", RPAREN: "RPAREN", COMMA: "COMMA", LBRACE: "LBRACE", RBRACE: "RBRACE",
 	AND: "AND", OR: "OR", NOT: "NOT",
 	EQ: "EQ", NEQ: "NEQ", ASSIGN: "ASSIGN", LT: "LT", LE: "LE", GT: "GT", GE: "GE",
-	KW_AND: "KW_AND", KW_OR: "KW_OR", KW_NOT: "KW_NOT", KW_IN: "KW_IN",
-	KW_ANY: "KW_ANY", KW_ALL: "KW_ALL", KW_CONTAINS: "KW_CONTAINS",
-	KW_IN_CIDR: "KW_IN_CIDR", KW_IN_DOMAIN: "KW_IN_DOMAIN",
+	KwAnd: "KwAnd", KwOr: "KwOr", KwNot: "KwNot", KwIn: "KwIn",
+	KwAny: "KwAny", KwAll: "KwAll", KwContains: "KwContains",
+	KwInCIDR: "KwInCIDR", KwInDomain: "KwInDomain",
 }
 
 // String renders the kind name (test/explain ergonomics).
@@ -125,15 +125,15 @@ func (t Token) String() string {
 // as the keyword; anything else (including every dotted path) stays an
 // IDENT so field names can never collide with operators.
 var keywords = map[string]Kind{
-	"and":       KW_AND,
-	"or":        KW_OR,
-	"not":       KW_NOT,
-	"in":        KW_IN,
-	"any":       KW_ANY,
-	"all":       KW_ALL,
-	"contains":  KW_CONTAINS,
-	"in_cidr":   KW_IN_CIDR,
-	"in_domain": KW_IN_DOMAIN,
+	"and":       KwAnd,
+	"or":        KwOr,
+	"not":       KwNot,
+	"in":        KwIn,
+	"any":       KwAny,
+	"all":       KwAll,
+	"contains":  KwContains,
+	"in_cidr":   KwInCIDR,
+	"in_domain": KwInDomain,
 }
 
 // Lex tokenizes the whole query.  On the first lexical error it returns
@@ -218,7 +218,61 @@ func (lx *lexer) emit(kind Kind, start int, value string) Token {
 	}
 }
 
-// next dispatches on the next rune through the table below and returns
+// twoCharOps drives maximal-munch scanning of the two-character
+// operators: the leading rune either doubles ('&&', '||', '==') or
+// pairs with '=' ('!=', '<=', '>=').
+var twoCharOps = map[rune]struct {
+	self rune // second rune when the operator doubles
+	alt  rune // second rune for the pairwise form
+	kind Kind
+	text string
+}{
+	'&': {self: '&', kind: AND, text: "&&"},
+	'|': {self: '|', kind: OR, text: "||"},
+	'=': {self: '=', kind: EQ, text: "=="},
+	'!': {alt: '=', kind: NEQ, text: "!="},
+	'<': {alt: '=', kind: LE, text: "<="},
+	'>': {alt: '=', kind: GE, text: ">="},
+}
+
+// singleCharOps maps the one-character punctuation tokens.
+var singleCharOps = map[rune]struct {
+	kind Kind
+	text string
+}{
+	'(': {kind: LPAREN, text: "("},
+	')': {kind: RPAREN, text: ")"},
+	',': {kind: COMMA, text: ","},
+	'{': {kind: LBRACE, text: "{"},
+	'}': {kind: RBRACE, text: "}"},
+	'!': {kind: NOT, text: "!"},
+	'=': {kind: ASSIGN, text: "="},
+	'<': {kind: LT, text: "<"},
+	'>': {kind: GT, text: ">"},
+}
+
+// scanTwoChar consumes a two-character operator when the input has one
+// at the current position (maximal munch).  matched=false means the
+// leading rune does not start a two-char operator (or the second rune
+// is missing) and the caller falls back to the single-char table.
+func (lx *lexer) scanTwoChar(r rune, start int) (Token, bool) {
+	op, ok := twoCharOps[r]
+	if !ok {
+		return Token{}, false
+	}
+	second := op.self
+	if second == 0 {
+		second = op.alt
+	}
+	if lx.peek2() != second {
+		return Token{}, false
+	}
+	lx.advance()
+	lx.advance()
+	return lx.emit(op.kind, start, op.text), true
+}
+
+// next dispatches on the next rune through the tables above and returns
 // the next token (EOF at end of input).
 func (lx *lexer) next() (Token, error) {
 	lx.skipSpace()
@@ -242,69 +296,19 @@ func (lx *lexer) next() (Token, error) {
 	// besides the illegal-character fallback).
 	case r == '"':
 		return lx.scanString()
-
-	// Two-character operators, maximal munch.
-	case r == '&' && lx.peek2() == '&':
-		lx.advance()
-		lx.advance()
-		return lx.emit(AND, start, "&&"), nil
-	case r == '|' && lx.peek2() == '|':
-		lx.advance()
-		lx.advance()
-		return lx.emit(OR, start, "||"), nil
-	case r == '=' && lx.peek2() == '=':
-		lx.advance()
-		lx.advance()
-		return lx.emit(EQ, start, "=="), nil
-	case r == '!' && lx.peek2() == '=':
-		lx.advance()
-		lx.advance()
-		return lx.emit(NEQ, start, "!="), nil
-	case r == '<' && lx.peek2() == '=':
-		lx.advance()
-		lx.advance()
-		return lx.emit(LE, start, "<="), nil
-	case r == '>' && lx.peek2() == '=':
-		lx.advance()
-		lx.advance()
-		return lx.emit(GE, start, ">="), nil
-
-	// Single-character tokens.
-	case r == '(':
-		lx.advance()
-		return lx.emit(LPAREN, start, "("), nil
-	case r == ')':
-		lx.advance()
-		return lx.emit(RPAREN, start, ")"), nil
-	case r == ',':
-		lx.advance()
-		return lx.emit(COMMA, start, ","), nil
-	case r == '{':
-		lx.advance()
-		return lx.emit(LBRACE, start, "{"), nil
-	case r == '}':
-		lx.advance()
-		return lx.emit(RBRACE, start, "}"), nil
-	case r == '!':
-		lx.advance()
-		return lx.emit(NOT, start, "!"), nil
-	case r == '=':
-		lx.advance()
-		return lx.emit(ASSIGN, start, "="), nil
-	case r == '<':
-		lx.advance()
-		return lx.emit(LT, start, "<"), nil
-	case r == '>':
-		lx.advance()
-		return lx.emit(GT, start, ">"), nil
-
-	default:
-		lx.advance()
-		return Token{}, newLexError(lx.startLine, lx.startCol,
-			fmt.Sprintf("unexpected character %s at line %d, column %d", quoteRune(r), lx.startLine, lx.startCol),
-			"the character does not start any GQL token",
-			hintForChar(r))
 	}
+	if tok, matched := lx.scanTwoChar(r, start); matched {
+		return tok, nil
+	}
+	if op, ok := singleCharOps[r]; ok {
+		lx.advance()
+		return lx.emit(op.kind, start, op.text), nil
+	}
+	lx.advance()
+	return Token{}, newLexError(lx.startLine, lx.startCol,
+		fmt.Sprintf("unexpected character %s at line %d, column %d", quoteRune(r), lx.startLine, lx.startCol),
+		"the character does not start any GQL token",
+		hintForChar(r))
 }
 
 // skipSpace consumes spaces, tabs and newlines (position tracking lives
@@ -370,18 +374,18 @@ func (lx *lexer) scanString() (Token, error) {
 	var val strings.Builder
 	for {
 		r := lx.peek()
-		switch {
-		case r == 0 || r == '\n':
+		switch r {
+		case 0, '\n':
 			// Position the error at the OPENING quote: that is where the
 			// operator looks when fixing an unterminated literal.
 			return Token{}, newLexError(openLine, openCol,
 				fmt.Sprintf("unterminated string literal starting at line %d, column %d", openLine, openCol),
 				"the closing double quote is missing (a raw line break also ends scanning)",
 				"add the closing \" on the same line, or escape a literal line break as \\n")
-		case r == '"':
+		case '"':
 			lx.advance()
 			return lx.emit(STRING, start, val.String()), nil
-		case r == '\\':
+		case '\\':
 			escLine, escCol := lx.line, lx.col
 			lx.advance() // backslash
 			e := lx.peek()
@@ -440,16 +444,16 @@ func (lx *lexer) scanString() (Token, error) {
 
 // quoteRune renders r for an error message (visible for quote/space).
 func quoteRune(r rune) string {
-	switch {
-	case r == '"':
+	switch r {
+	case '"':
 		return `'"'`
-	case r == ' ':
+	case ' ':
 		return "' '"
-	case r == '\t':
+	case '\t':
 		return "'\t'"
-	case r == '\r':
+	case '\r':
 		return "'\\r'"
-	case r == 0:
+	case 0:
 		return "end of input"
 	default:
 		return fmt.Sprintf("'%c'", r)

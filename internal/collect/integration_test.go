@@ -202,7 +202,7 @@ func TestRunnerFullFlow(t *testing.T) {
 			}, Cursor: "c2", Done: true},
 		},
 	}
-	r.withCollectors(map[string]Collector{"dns": fake})
+	r.collectors = map[string]Collector{"dns": fake}
 	colSource(t, r, "flow-dns", "dns", map[string]any{}, true)
 
 	stats, err := r.Run(context.Background(), "flow-dns")
@@ -252,7 +252,7 @@ func TestRunnerFullFlow(t *testing.T) {
 	fake2 := &fakeCollector{kind: "dns", batches: []*Batch{
 		{Raws: []RawFact{{AssetKind: "ip", Value: "203.0.113.7"}}, Cursor: "c3", Done: true},
 	}}
-	r.withCollectors(map[string]Collector{"dns": fake2})
+	r.collectors = map[string]Collector{"dns": fake2}
 	stats2, err := r.Run(context.Background(), "flow-dns")
 	if err != nil {
 		t.Fatalf("re-run: %v", err)
@@ -274,7 +274,7 @@ func TestRunnerRetryAndFatal(t *testing.T) {
 	boom := errors.New("transport: connection reset")
 	transport := &fakeCollector{kind: "ip2asn", failN: 2, failErr: boom,
 		batches: []*Batch{{Raws: []RawFact{{AssetKind: "ip", Value: "203.0.113.7"}}, Done: true}}}
-	r.withCollectors(map[string]Collector{"ip2asn": transport})
+	r.collectors = map[string]Collector{"ip2asn": transport}
 	colSource(t, r, "retry-src", "ip2asn", map[string]any{}, true)
 	stats, err := r.Run(context.Background(), "retry-src")
 	if err != nil {
@@ -289,7 +289,7 @@ func TestRunnerRetryAndFatal(t *testing.T) {
 
 	fatal := &fakeCollector{kind: "ip2asn", verdict: ReviewEnabled,
 		failN: 5, failErr: Fatal(errors.New("seed_mode invalid"))}
-	r.withCollectors(map[string]Collector{"ip2asn": fatal})
+	r.collectors = map[string]Collector{"ip2asn": fatal}
 	colSource(t, r, "fatal-src", "ip2asn", map[string]any{}, true)
 	if _, err := r.Run(context.Background(), "fatal-src"); err == nil {
 		t.Fatal("expected the fatal error to surface")
@@ -316,7 +316,7 @@ func TestRunnerSuppressionInterplay(t *testing.T) {
 			{AssetKind: "domain", Value: "clean.example"},
 		}, Done: true},
 	}}
-	r.withCollectors(map[string]Collector{"dns": fake})
+	r.collectors = map[string]Collector{"dns": fake}
 	colSource(t, r, "sup-dns", "dns", map[string]any{}, true)
 
 	stats, err := r.Run(context.Background(), "sup-dns")

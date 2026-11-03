@@ -59,11 +59,12 @@ type metaCarrier struct {
 
 type metaKey struct{}
 
-// writeData renders a success envelope with the given status.
-func writeData(w http.ResponseWriter, r *http.Request, status int, data any) {
+// writeData renders a success envelope (HTTP 200; errors use writeError
+// with an explicit status).
+func writeData(w http.ResponseWriter, r *http.Request, data any) {
 	m := metaFrom(r)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(status)
+	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(envelope{Data: data, Meta: m})
 }
 

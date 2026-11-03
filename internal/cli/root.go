@@ -170,17 +170,3 @@ func printf(w io.Writer, format string, a ...any) {
 func println(w io.Writer, a ...any) {
 	_, _ = fmt.Fprintln(w, a...)
 }
-
-// writeNotImplementedInM1 prints the honest stub message for commands
-// whose full implementation lands in a later milestone, and returns the
-// write error (so RunE can propagate it).  The message states the
-// milestone plainly so docs and help never overclaim (AC-8.x).  Output
-// goes to the cobra-managed writer (cmd.OutOrStdout) so tests can
-// capture it via RootCmd.SetOut.
-func writeNotImplementedInM1(cmd *cobra.Command, name string, milestone string) error {
-	_, err := fmt.Fprintf(cmd.OutOrStdout(),
-		"gseer %s: full implementation lands in %s.\n"+
-			"M1 ships the command registration so the help tree is truthful (AC-5.1).\n"+
-			"Run: gseer --help\n", name, milestone)
-	return err
-}

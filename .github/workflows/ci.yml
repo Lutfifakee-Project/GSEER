@@ -1,16 +1,16 @@
-# GSEER CI — M1 (Phase 1, v0.0.1).
+# GSEER CI (v0.1.0).
 #
 # AC-1.1: go build ./... under both 1.26.x and 1.27.x.
 # AC-1.2: go vet ./... clean.
-# AC-1.3: golangci-lint run clean.
+# AC-1.3: golangci-lint (v2 config) run clean.
 # AC-1.4: govulncheck ./... clean.
 # AC-3.1: import-graph test green (no collector/egress deps).
-# AC-5.1 stub: no-phantom-commands test parses help; every listed
-#   command registered (full runnable check lands in M11).
+# AC-5.1: no-phantom-commands test — every help-listed command is
+#   registered and runnable (completed in M11; kept as a CI pin).
 #
-# The v0.0.1 release gate (Phase 1 plan §4) requires all of the above
-# green on both Go majors before any release tag is created (which itself
-# requires separate owner sign-off, SPEC-03 §4).
+# The release gate requires all of the above green on both Go majors
+# before any release tag is created (which itself requires separate
+# owner sign-off, SPEC-03 §4).
 
 name: CI
 
@@ -65,6 +65,26 @@ jobs:
       - name: Test (incl. AC-3.1 import-graph, AC-5.1 no-phantom stub)
         run: go test -race ./...
 
+  # Windows durability coverage for the updater: the replacement
+  # primitive (MoveFileExW with MOVEFILE_REPLACE_EXISTING |
+  # MOVEFILE_WRITE_THROUGH — os.Rename passes no write-through flag on
+  # Windows), the flag assertion, backup/rollback and the
+  # E_UPDATE_DIRSYNC warning contract can only execute on a Windows
+  # host.  The full platform-neutral updater suite runs here too.
+  update-windows:
+    name: Updater durability (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+          cache: true
+      - name: Updater tests (platform-neutral + Windows MoveFileExW coverage)
+        run: go test -count=1 ./internal/update/...
+      - name: Updater race detector
+        run: go test -race -count=1 ./internal/update/...
+
   lint:
     name: Lint (golangci-lint)
     runs-on: ubuntu-latest
@@ -74,10 +94,16 @@ jobs:
         with:
           go-version: "1.27.x"
           cache: true
+      # golangci-lint-action v9 runs on node24 (required by current
+      # GitHub runners); v2.15.0 is the first pinned linter release that
+      # builds with Go 1.26 and understands the repo's v2 config.
+      # `version: latest` was removed on purpose: the action resolved it
+      # to a v1.64.x binary built with Go 1.24, which cannot process a
+      # Go 1.26 module (the original post-push CI failure).
       - name: golangci-lint (AC-1.3)
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9.3.0
         with:
-          version: latest
+          version: v2.15.0
           args: --timeout 5m
 
   vuln:
@@ -96,7 +122,7 @@ jobs:
 
   # The import-graph job is also run as a Go test above, but we surface
   # it as its own job for visibility (the Search ≠ Scan invariant is the
-  # most important architectural property of v0.0.1).
+  # most important architectural property of GSEER).
   import-graph:
     name: Search ≠ Scan (AC-3.1)
     runs-on: ubuntu-latest
@@ -111,11 +137,11 @@ jobs:
       - name: AC-7.x active-observation absence
         run: go test -run TestNoCollectorPackageExists ./internal/cli
 
-  # M3: database integration tests against a real PostgreSQL service
+  # Database integration tests against a real PostgreSQL service
   # (migrations, bounded advisory lock, failure-injection rollback,
-  # force recovery, pool lifecycle).  Runs on PRs touching storage/CLI
-  # and nightly via workflow_dispatch; unit-only push builds above stay
-  # fast (no PG container).
+  # force recovery, pool lifecycle, collection/suppression/facets/
+  # export flows).  Runs on every push and PR; the unit-only build job
+  # above stays fast (no PG container).
   integration-test:
     name: DB integration (PostgreSQL 17)
     runs-on: ubuntu-latest

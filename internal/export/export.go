@@ -95,6 +95,52 @@ var csvColumns = []string{
 	"technologies", "sources", "first_seen", "last_seen", "stale",
 }
 
+// initExportWriter prepares the format-specific writer pair (the JSON
+// encoder and/or the CSV writer) and emits any format prologue.
+func initExportWriter(w io.Writer, format string) (*json.Encoder, *csv.Writer, error) {
+	switch format {
+	case FormatJSON:
+		// Streamed object: {"rows": [ ... ], "count": N, "footer": {...}}
+		if _, err := fmt.Fprint(w, `{"rows": [`); err != nil {
+			return nil, nil, err
+		}
+		return json.NewEncoder(w), nil, nil
+	case FormatNDJSON:
+		return json.NewEncoder(w), nil, nil
+	case FormatCSV:
+		cw := csv.NewWriter(w)
+		if err := cw.Write(csvColumns); err != nil {
+			return nil, nil, err
+		}
+		return nil, cw, nil
+	}
+	return nil, nil, fmt.Errorf("E_EXPORT_FORMAT: unsupported format %q (supported: %s)",
+		format, strings.Join(Formats, ", "))
+}
+
+// writeExportFooter emits the format-specific trailer after the last row.
+func writeExportFooter(w io.Writer, enc *json.Encoder, cw *csv.Writer, format string, st Stats, meta search.QueryInfo) error {
+	switch format {
+	case FormatJSON:
+		if _, err := fmt.Fprintf(w, `], "count": %d, "footer": `, st.Rows); err != nil {
+			return err
+		}
+		if err := enc.Encode(map[string]any{"query": meta, "notice": st.Notice}); err != nil {
+			return err
+		}
+		_, err := fmt.Fprint(w, "}")
+		return err
+	case FormatCSV:
+		cw.Flush()
+		return cw.Error()
+	case FormatNDJSON:
+		// The metadata record distinguishes itself from data rows by its
+		// "record" key (data rows have "row_id").
+		return enc.Encode(map[string]any{"record": "footer", "count": st.Rows, "query": meta, "notice": st.Notice})
+	}
+	return fmt.Errorf("E_EXPORT_FORMAT: unsupported format %q", format)
+}
+
 // Stream writes the export to w and returns the stats.  Rows are
 // flushed per page — the caller's writer decides the buffering.
 func Stream(ctx context.Context, svc *search.Service, req Request, w io.Writer) (Stats, error) {
@@ -104,30 +150,16 @@ func Stream(ctx context.Context, svc *search.Service, req Request, w io.Writer) 
 			req.Format, strings.Join(Formats, ", "))
 	}
 
+	enc, cw, err := initExportWriter(w, req.Format)
+	if err != nil {
+		return Stats{}, err
+	}
 	var (
-		enc  *json.Encoder
-		cw   *csv.Writer
 		st   Stats
 		meta search.QueryInfo
 	)
 	pageQuery := req.Query
 	pageQuery.WithStats = false
-
-	switch req.Format {
-	case FormatJSON:
-		// Streamed object: {"rows": [ ... ], "count": N, "footer": {...}}
-		if _, err := fmt.Fprint(w, `{"rows": [`); err != nil {
-			return st, err
-		}
-		enc = json.NewEncoder(w)
-	case FormatNDJSON:
-		enc = json.NewEncoder(w)
-	case FormatCSV:
-		cw = csv.NewWriter(w)
-		if err := cw.Write(csvColumns); err != nil {
-			return st, err
-		}
-	}
 
 	first := true
 	cursor := req.Query.Cursor
@@ -164,29 +196,8 @@ func Stream(ctx context.Context, svc *search.Service, req Request, w io.Writer) 
 		cursor = res.NextCursor
 	}
 
-	// Footer per format.
-	switch req.Format {
-	case FormatJSON:
-		if _, err := fmt.Fprintf(w, `], "count": %d, "footer": `, st.Rows); err != nil {
-			return st, err
-		}
-		if err := enc.Encode(map[string]any{"query": meta, "notice": st.Notice}); err != nil {
-			return st, err
-		}
-		if _, err := fmt.Fprint(w, "}"); err != nil {
-			return st, err
-		}
-	case FormatCSV:
-		cw.Flush()
-		if err := cw.Error(); err != nil {
-			return st, err
-		}
-	case FormatNDJSON:
-		// The metadata record distinguishes itself from data rows by its
-		// "record" key (data rows have "row_id").
-		if err := enc.Encode(map[string]any{"record": "footer", "count": st.Rows, "query": meta, "notice": st.Notice}); err != nil {
-			return st, err
-		}
+	if ferr := writeExportFooter(w, enc, cw, req.Format, st, meta); ferr != nil {
+		return st, ferr
 	}
 
 	st.Format = req.Format

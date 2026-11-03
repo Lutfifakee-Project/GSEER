@@ -22,6 +22,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
+
 	"github.com/Lutfifakee-Project/GSEER/internal/gql/parser"
 	"github.com/Lutfifakee-Project/GSEER/internal/gql/planner"
 	"github.com/Lutfifakee-Project/GSEER/internal/gql/validator"
@@ -112,6 +114,86 @@ type FacetsInfo struct {
 	MaxValues int    `json:"max_values"`
 }
 
+// resolveFacetParams validates the facet query options and applies the
+// engine defaults (mode, timeout, max-values cap).
+func resolveFacetParams(q FacetsQuery, s *Service) (planner.Mode, time.Duration, int, error) {
+	mode := s.DefaultMode
+	if q.Mode != "" {
+		m, err := planner.ParseMode(q.Mode)
+		if err != nil {
+			return 0, 0, 0, &QueryError{Code: "E_QUERY_MODE", Detail: err.Error(), Next: "try: --mode service"}
+		}
+		mode = m
+	}
+	timeout := s.DefaultTimeout
+	if q.Timeout > 0 {
+		timeout = q.Timeout
+	}
+	maxValues := q.MaxValues
+	if maxValues == 0 {
+		maxValues = DefaultFacetValues
+	}
+	if maxValues < 0 || maxValues > MaxFacetValues {
+		return 0, 0, 0, &QueryError{
+			Code:   "E_QUERY_FACET",
+			Detail: fmt.Sprintf("facet max-values %d is out of range (0–%d)", maxValues, MaxFacetValues),
+			Why:    "facet cardinality is capped to keep the aggregates cheap",
+			Next:   fmt.Sprintf("try: --max-values %d", DefaultFacetValues),
+		}
+	}
+	return mode, timeout, maxValues, nil
+}
+
+// facetDims resolves the requested facet dimensions: the full engine
+// set when unspecified, else the deduplicated selection (order kept).
+func facetDims(requested []string) ([]string, error) {
+	if len(requested) == 0 {
+		return FacetNames, nil
+	}
+	seen := map[string]bool{}
+	dims := make([]string, 0, len(requested))
+	for _, name := range requested {
+		if !facetNameKnown(name) {
+			return nil, &QueryError{
+				Code:   "E_QUERY_FACET",
+				Detail: fmt.Sprintf("unknown facet %q", name),
+				Why:    "the facet set is fixed per engine version",
+				Next:   "known facets: " + joinFacets(FacetNames),
+			}
+		}
+		if !seen[name] {
+			seen[name] = true
+			dims = append(dims, name)
+		}
+	}
+	return dims, nil
+}
+
+// collectFacet runs one dimension's aggregate on the shared transaction
+// and scans its (value, count) rows.
+func collectFacet(ctx context.Context, tx pgx.Tx, dim, where, countExpr string, maxValues int, args []any) (Facet, error) {
+	sqlText := facetSQL(dim, where, countExpr, maxValues)
+	rows, err := tx.Query(ctx, sqlText, args...)
+	if err != nil {
+		return Facet{}, mapExecError(err)
+	}
+	defer func() { rows.Close() }()
+	facet := Facet{Name: dim}
+	for rows.Next() {
+		var v string
+		var n int64
+		if err := rows.Scan(&v, &n); err != nil {
+			return Facet{}, mapExecError(err)
+		}
+		facet.Values = append(facet.Values, FacetValue{Value: v, Count: n})
+	}
+	if err := rows.Err(); err != nil {
+		return Facet{}, mapExecError(err)
+	}
+	facet.Truncated = len(facet.Values) == maxValues
+	return facet, nil
+}
+
 // Facets computes the requested dimensions over the GQL-filtered row
 // set.  Every dimension runs inside ONE transaction with the query
 // timeout applied transaction-locally (same pattern as Search.exec —
@@ -126,50 +208,13 @@ func (s *Service) Facets(ctx context.Context, q FacetsQuery) (*FacetsResult, err
 			Next:   `try: gseer search 'port==443' --facets`,
 		}
 	}
-	mode := s.DefaultMode
-	if q.Mode != "" {
-		m, err := planner.ParseMode(q.Mode)
-		if err != nil {
-			return nil, &QueryError{Code: "E_QUERY_MODE", Detail: err.Error(), Next: "try: --mode service"}
-		}
-		mode = m
+	mode, timeout, maxValues, err := resolveFacetParams(q, s)
+	if err != nil {
+		return nil, err
 	}
-	timeout := s.DefaultTimeout
-	if q.Timeout > 0 {
-		timeout = q.Timeout
-	}
-	maxValues := q.MaxValues
-	if maxValues == 0 {
-		maxValues = DefaultFacetValues
-	}
-	if maxValues < 0 || maxValues > MaxFacetValues {
-		return nil, &QueryError{
-			Code:   "E_QUERY_FACET",
-			Detail: fmt.Sprintf("facet max-values %d is out of range (0–%d)", maxValues, MaxFacetValues),
-			Why:    "facet cardinality is capped to keep the aggregates cheap",
-			Next:   fmt.Sprintf("try: --max-values %d", DefaultFacetValues),
-		}
-	}
-
-	// Which dimensions?
-	dims := FacetNames
-	if len(q.Facets) > 0 {
-		seen := map[string]bool{}
-		dims = nil
-		for _, name := range q.Facets {
-			if !facetNameKnown(name) {
-				return nil, &QueryError{
-					Code:   "E_QUERY_FACET",
-					Detail: fmt.Sprintf("unknown facet %q", name),
-					Why:    "the facet set is fixed per engine version",
-					Next:   "known facets: " + joinFacets(FacetNames),
-				}
-			}
-			if !seen[name] {
-				seen[name] = true
-				dims = append(dims, name)
-			}
-		}
+	dims, err := facetDims(q.Facets)
+	if err != nil {
+		return nil, err
 	}
 
 	// The same chain as Search: parse → validate → plan WHERE.
@@ -207,27 +252,10 @@ func (s *Service) Facets(ctx context.Context, q FacetsQuery) (*FacetsResult, err
 		GQL: q.GQL, Mode: mode.String(), MaxValues: maxValues,
 	}}
 	for _, dim := range dims {
-		sqlText, _ := facetSQL(dim, where, countExpr, maxValues)
-		rows, err := tx.Query(ctx, sqlText, args...)
+		facet, err := collectFacet(ctx, tx, dim, where, countExpr, maxValues, args)
 		if err != nil {
-			return nil, mapExecError(err)
+			return nil, err
 		}
-		facet := Facet{Name: dim}
-		for rows.Next() {
-			var v string
-			var n int64
-			if err := rows.Scan(&v, &n); err != nil {
-				rows.Close()
-				return nil, mapExecError(err)
-			}
-			facet.Values = append(facet.Values, FacetValue{Value: v, Count: n})
-		}
-		if err := rows.Err(); err != nil {
-			rows.Close()
-			return nil, mapExecError(err)
-		}
-		rows.Close()
-		facet.Truncated = len(facet.Values) == maxValues
 		result.Facets = append(result.Facets, facet)
 	}
 	if err := tx.Commit(ctx); err != nil {
@@ -239,10 +267,9 @@ func (s *Service) Facets(ctx context.Context, q FacetsQuery) (*FacetsResult, err
 
 // facetSQL renders one dimension's aggregate.  The facet dimension is
 // engine-owned (never user input); the WHERE clause is planner output
-// over $N placeholders; args carries the filter values only.
-// facetSQL renders one dimension's aggregate (fixed signature for the
-// engine; the WHERE clause carries all $N placeholders).
-func facetSQL(dim, where, countExpr string, maxValues int) (string, []any) {
+// over $N placeholders and carries all filter values, so no dimension
+// needs extra query arguments today.
+func facetSQL(dim, where, countExpr string, maxValues int) string {
 	// placeholder must start at len(args)+1.  No dimension SQL needs
 	// extra placeholders today (maxValues is engine-formatted, bounded).
 	selectExpr := map[string]string{
@@ -277,7 +304,7 @@ func facetSQL(dim, where, countExpr string, maxValues int) (string, []any) {
 	return fmt.Sprintf(
 		"SELECT %s AS value, %s AS n FROM %s WHERE (%s)%s GROUP BY %s ORDER BY n DESC, value ASC LIMIT %d",
 		selectExpr, countExpr, from, where, notNull, groupBy, maxValues,
-	), nil
+	)
 }
 
 func facetNameKnown(name string) bool {

@@ -368,6 +368,8 @@ func (p *gseerMigrateDriver) SetVersion(version int, dirty bool) error {
 		return &migratedb.Error{OrigErr: err, Err: "transaction start failed"}
 	}
 
+	// #nosec G202 -- the identifier is driver-internal (not user input) and
+	// is passed through quoteIdentifier; this mirrors upstream golang-migrate.
 	query := `TRUNCATE ` + quoteIdentifier(p.migrationsTableName)
 	if _, err := tx.Exec(query); err != nil {
 		if errRollback := tx.Rollback(); errRollback != nil {

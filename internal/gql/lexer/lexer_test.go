@@ -105,7 +105,7 @@ func TestLexEOFPosition(t *testing.T) {
 // the expected kind sequence with verbatim texts.
 func TestLexTokenShapes(t *testing.T) {
 	toks := lexOK(t, `port==443 && title CONTAINS "login"`)
-	want := []Kind{IDENT, EQ, INT, AND, IDENT, KW_CONTAINS, STRING, EOF}
+	want := []Kind{IDENT, EQ, INT, AND, IDENT, KwContains, STRING, EOF}
 	if !kindEqual(kinds(toks), want) {
 		t.Fatalf("kind stream = %v, want %v", kinds(toks), want)
 	}
@@ -120,7 +120,7 @@ func TestLexTokenShapes(t *testing.T) {
 		{2, INT, "443", "443"},
 		{3, AND, "&&", "&&"},
 		{4, IDENT, "title", "title"},
-		{5, KW_CONTAINS, "CONTAINS", "CONTAINS"},
+		{5, KwContains, "CONTAINS", "CONTAINS"},
 		{6, STRING, `"login"`, "login"},
 	}
 	for _, c := range checks {
@@ -162,15 +162,15 @@ func TestLexIdentifiersAndDotPaths(t *testing.T) {
 // TestLexKeywordsCaseInsensitive — the keyword set matches any casing.
 func TestLexKeywordsCaseInsensitive(t *testing.T) {
 	cases := map[string]Kind{
-		"and": KW_AND, "AND": KW_AND, "And": KW_AND,
-		"or": KW_OR, "OR": KW_OR,
-		"not": KW_NOT, "NOT": KW_NOT,
-		"in": KW_IN, "IN": KW_IN,
-		"any": KW_ANY, "ANY": KW_ANY,
-		"all": KW_ALL, "ALL": KW_ALL,
-		"contains": KW_CONTAINS, "Contains": KW_CONTAINS,
-		"in_cidr": KW_IN_CIDR, "IN_CIDR": KW_IN_CIDR, "In_Cidr": KW_IN_CIDR,
-		"in_domain": KW_IN_DOMAIN, "IN_DOMAIN": KW_IN_DOMAIN,
+		"and": KwAnd, "AND": KwAnd, "And": KwAnd,
+		"or": KwOr, "OR": KwOr,
+		"not": KwNot, "NOT": KwNot,
+		"in": KwIn, "IN": KwIn,
+		"any": KwAny, "ANY": KwAny,
+		"all": KwAll, "ALL": KwAll,
+		"contains": KwContains, "Contains": KwContains,
+		"in_cidr": KwInCIDR, "IN_CIDR": KwInCIDR, "In_Cidr": KwInCIDR,
+		"in_domain": KwInDomain, "IN_DOMAIN": KwInDomain,
 	}
 	for src, want := range cases {
 		toks := lexOK(t, src)
@@ -226,7 +226,7 @@ func TestLexSymbolicOperators(t *testing.T) {
 // maximal-munch boundaries between INT and IDENT.
 func TestLexPunctuationAndNumbers(t *testing.T) {
 	toks := lexOK(t, "port IN (80,443)")
-	want := []Kind{IDENT, KW_IN, LPAREN, INT, COMMA, INT, RPAREN, EOF}
+	want := []Kind{IDENT, KwIn, LPAREN, INT, COMMA, INT, RPAREN, EOF}
 	if !kindEqual(kinds(toks), want) {
 		t.Fatalf("kinds = %v, want %v", kinds(toks), want)
 	}
@@ -245,7 +245,7 @@ func TestLexPunctuationAndNumbers(t *testing.T) {
 	// Quantified-block braces tokenize as punctuation (M8 roundtrip
 	// contract with ast.Quantified.String).
 	toks = lexOK(t, "ANY(host){ port == 1 }")
-	want = []Kind{KW_ANY, LPAREN, IDENT, RPAREN, LBRACE, IDENT, EQ, INT, RBRACE, EOF}
+	want = []Kind{KwAny, LPAREN, IDENT, RPAREN, LBRACE, IDENT, EQ, INT, RBRACE, EOF}
 	if !kindEqual(kinds(toks), want) {
 		t.Errorf("quantifier kinds = %v, want %v", kinds(toks), want)
 	}
@@ -332,9 +332,9 @@ func TestLexFullQuery(t *testing.T) {
 	src := "!(http.title != \"Admin Login\") && port in (80, 443) ||\nANY(host) && ip IN_CIDR \"198.51.100.0/24\""
 	toks := lexOK(t, src)
 	want := []Kind{
-		NOT, LPAREN, IDENT, NEQ, STRING, RPAREN, AND, IDENT, KW_IN,
-		LPAREN, INT, COMMA, INT, RPAREN, OR, KW_ANY, LPAREN, IDENT, RPAREN,
-		AND, IDENT, KW_IN_CIDR, STRING, EOF,
+		NOT, LPAREN, IDENT, NEQ, STRING, RPAREN, AND, IDENT, KwIn,
+		LPAREN, INT, COMMA, INT, RPAREN, OR, KwAny, LPAREN, IDENT, RPAREN,
+		AND, IDENT, KwInCIDR, STRING, EOF,
 	}
 	if !kindEqual(kinds(toks), want) {
 		t.Fatalf("kinds = %v\nwant   = %v", kinds(toks), want)

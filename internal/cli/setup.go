@@ -127,10 +127,7 @@ explicit --profile still wins.`,
 			// layer's own hint names: "run: gseer setup
 			// --self-hosted --with-compose  (to provision one)".
 			if withCompose {
-				if err := runSetupWithCompose(cmd, ".", withFull); err != nil {
-					return err
-				}
-				return nil
+				return runSetupWithCompose(cmd, ".", withFull)
 			}
 
 			// --self-hosted implies the self-hosted profile: the
@@ -261,7 +258,7 @@ func runSetupSelfHosted(cmd *cobra.Command, cfg *config.Config, dbURL string, fi
 	}
 
 	if fixtureFollows {
-		fmt.Fprintln(out) // separator before the fixture report
+		_, _ = fmt.Fprintln(out) // separator before the fixture report
 		return nil
 	}
 

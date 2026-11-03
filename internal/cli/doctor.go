@@ -114,7 +114,7 @@ filled index (QS-4 normative).  Doctor is read-only: it never migrates.`,
 			if cfg.Profile != config.ProfileSelfHosted {
 				// Client profile: probe the configured endpoint.
 				printf(out, "[ -    ] DB checks: skipped (client profile has no local database)\n")
-				reportClientEndpoint(cmd, cfg, report)
+				reportClientEndpoint(cfg, report)
 				printf(out, "\n%d PASS, %d FAIL", pass, fail)
 				if fail > 0 {
 					println(out, ". Fix the failures above and re-run.")
@@ -153,7 +153,7 @@ func binarySHA256() string {
 	if err != nil {
 		return "unavailable"
 	}
-	b, err := os.ReadFile(path)
+	b, err := os.ReadFile(path) // #nosec G304 -- reads the running binary itself (os.Executable) for the doctor fingerprint
 	if err != nil {
 		return "unavailable"
 	}
@@ -200,7 +200,7 @@ func reportIndexCheck(cmd *cobra.Command, cfg *config.Config, report func(name, 
 
 // reportClientEndpoint probes the configured endpoint's health route
 // (client profile).
-func reportClientEndpoint(cmd *cobra.Command, cfg *config.Config, report func(name, outcome, detail, fix string, err error)) {
+func reportClientEndpoint(cfg *config.Config, report func(name, outcome, detail, fix string, err error)) {
 	endpoint := strings.TrimRight(cfg.Client.Endpoint, "/")
 	if endpoint == "" {
 		report("server reachability", "HINT", "no endpoint configured",
@@ -214,7 +214,7 @@ func reportClientEndpoint(cmd *cobra.Command, cfg *config.Config, report func(na
 			"check client.endpoint and that the server is running", err)
 		return
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		report("server reachability", "FAIL", fmt.Sprintf("%s answered HTTP %d", endpoint, resp.StatusCode),
 			"check the server logs", nil)

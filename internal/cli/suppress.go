@@ -22,7 +22,7 @@ package cli
 //      gseer suppress add <kind> <value> --reason "..."   add a rule and
 //                                                         retract matching
 //                                                         indexed records
-//      gseer suppress list                                list every rule
+//      gseer suppress list                                show every rule
 //      gseer suppress remove <id>                         remove a rule
 //
 // Kinds: ip | cidr | domain | domain_suffix | source.
@@ -138,7 +138,7 @@ func newSuppressAddCmd() *cobra.Command {
 				if existed {
 					return fmt.Errorf("E_SUPPRESS_EXISTS: rule #%d (%s:%s) already exists", rule.ID, rule.Kind, rule.Value)
 				}
-				fmt.Fprintf(out, "{\"id\":%d,\"kind\":%q,\"value\":%q,\"reason\":%q,\"expires_at\":%q}\n",
+				_, _ = fmt.Fprintf(out, "{\"id\":%d,\"kind\":%q,\"value\":%q,\"reason\":%q,\"expires_at\":%q}\n",
 					rule.ID, rule.Kind, rule.Value, rule.Reason, expires)
 				return nil
 			}

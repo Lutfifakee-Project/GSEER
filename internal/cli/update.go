@@ -154,11 +154,17 @@ func runUpdate(cmd *cobra.Command, _ []string) error {
 
 	// --apply: the full chain.
 	res, err := update.Apply(ctx, manifestBytes, nil, current, target, fForce, fetcher)
-	if err != nil {
+	if err != nil && !update.IsDirSyncWarning(err) {
 		printf(out, "%s\n", err.Error())
 		printf(out, "The running binary was left untouched (or restored from %s.bak).\n", target)
 		exitWith(ExitInvalidInput)
 		return nil // unreachable when exitFunc terminates
+	}
+	if err != nil {
+		// Dir-sync durability warning: the binary WAS replaced (nothing
+		// was rolled back) — report the success plus the warning instead
+		// of a false "left untouched" failure.
+		printf(out, "[warn] %s\n", err.Error())
 	}
 	printf(out, "[ ok  ] updated %s → %s (%d bytes) at %s\n", res.PreviousVersion, res.NewVersion, res.Bytes, res.Replaced)
 	printf(out, "previous binary kept at %s.bak — restore it manually if the new build misbehaves\n", target)

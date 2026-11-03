@@ -17,7 +17,6 @@
 package search
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/netip"
 	"time"
@@ -83,112 +82,54 @@ type Row struct {
 // sortValue renders the row's value for the given canonical sort field
 // (the cursor payload form): stringified, with isNull=true when the
 // column was SQL NULL.
+//
+// The per-field dispatch is table-driven: stringSortFields / intSortFields
+// cover the pointer columns, the switch below the nullable time columns
+// and the two never-null text columns.
+var stringSortFields = map[string]func(*Row) *string{
+	"ip":                  func(r *Row) *string { return r.IP },
+	"domain":              func(r *Row) *string { return r.Domain },
+	"hostname":            func(r *Row) *string { return r.Hostname },
+	"asn_org":             func(r *Row) *string { return r.ASNOrg },
+	"geo_country":         func(r *Row) *string { return r.GeoCountry },
+	"geo_region":          func(r *Row) *string { return r.GeoRegion },
+	"geo_city":            func(r *Row) *string { return r.GeoCity },
+	"transport":           func(r *Row) *string { return r.Transport },
+	"protocol":            func(r *Row) *string { return r.Protocol },
+	"name":                func(r *Row) *string { return r.Name },
+	"product":             func(r *Row) *string { return r.Product },
+	"version":             func(r *Row) *string { return r.Version },
+	"http.title":          func(r *Row) *string { return r.HTTPTitle },
+	"http.server":         func(r *Row) *string { return r.HTTPServer },
+	"tls.version":         func(r *Row) *string { return r.TLSVersion },
+	"tls.cert_subject_cn": func(r *Row) *string { return r.TLSCertSubjectCN },
+	"tls.cert_issuer_cn":  func(r *Row) *string { return r.TLSCertIssuerCN },
+}
+
+var intSortFields = map[string]func(*Row) *int{
+	"port":        func(r *Row) *int { return r.Port },
+	"asn":         func(r *Row) *int { return r.ASN },
+	"http.status": func(r *Row) *int { return r.HTTPStatus },
+}
+
 func (r *Row) sortValue(field string) (string, bool) {
+	if get, ok := stringSortFields[field]; ok {
+		if p := get(r); p != nil {
+			return *p, false
+		}
+		return "", true
+	}
+	if get, ok := intSortFields[field]; ok {
+		if p := get(r); p != nil {
+			return fmt.Sprintf("%d", *p), false
+		}
+		return "", true
+	}
 	switch field {
-	case "port":
-		if r.Port == nil {
-			return "", true
-		}
-		return fmt.Sprintf("%d", *r.Port), false
-	case "asn":
-		if r.ASN == nil {
-			return "", true
-		}
-		return fmt.Sprintf("%d", *r.ASN), false
-	case "http.status":
-		if r.HTTPStatus == nil {
-			return "", true
-		}
-		return fmt.Sprintf("%d", *r.HTTPStatus), false
 	case "asset_value":
 		return r.AssetValue, false
 	case "asset_kind":
 		return r.AssetKind, false
-	case "ip":
-		if r.IP == nil {
-			return "", true
-		}
-		return *r.IP, false
-	case "domain":
-		if r.Domain == nil {
-			return "", true
-		}
-		return *r.Domain, false
-	case "hostname":
-		if r.Hostname == nil {
-			return "", true
-		}
-		return *r.Hostname, false
-	case "asn_org":
-		if r.ASNOrg == nil {
-			return "", true
-		}
-		return *r.ASNOrg, false
-	case "geo_country":
-		if r.GeoCountry == nil {
-			return "", true
-		}
-		return *r.GeoCountry, false
-	case "geo_region":
-		if r.GeoRegion == nil {
-			return "", true
-		}
-		return *r.GeoRegion, false
-	case "geo_city":
-		if r.GeoCity == nil {
-			return "", true
-		}
-		return *r.GeoCity, false
-	case "transport":
-		if r.Transport == nil {
-			return "", true
-		}
-		return *r.Transport, false
-	case "protocol":
-		if r.Protocol == nil {
-			return "", true
-		}
-		return *r.Protocol, false
-	case "name":
-		if r.Name == nil {
-			return "", true
-		}
-		return *r.Name, false
-	case "product":
-		if r.Product == nil {
-			return "", true
-		}
-		return *r.Product, false
-	case "version":
-		if r.Version == nil {
-			return "", true
-		}
-		return *r.Version, false
-	case "http.title":
-		if r.HTTPTitle == nil {
-			return "", true
-		}
-		return *r.HTTPTitle, false
-	case "http.server":
-		if r.HTTPServer == nil {
-			return "", true
-		}
-		return *r.HTTPServer, false
-	case "tls.version":
-		if r.TLSVersion == nil {
-			return "", true
-		}
-		return *r.TLSVersion, false
-	case "tls.cert_subject_cn":
-		if r.TLSCertSubjectCN == nil {
-			return "", true
-		}
-		return *r.TLSCertSubjectCN, false
-	case "tls.cert_issuer_cn":
-		if r.TLSCertIssuerCN == nil {
-			return "", true
-		}
-		return *r.TLSCertIssuerCN, false
 	case "first_seen", "last_seen", "tls.cert_expiry":
 		var t time.Time
 		switch field {
@@ -208,85 +149,60 @@ func (r *Row) sortValue(field string) (string, bool) {
 }
 
 // scanRow binds one result row to a Row by column name.
+//
+// The column → target dispatch is the rowScanTargets table (the planner
+// owns the projection list; unknown columns fall through to a discard
+// buffer so the row stays consumable).
+var rowScanTargets = map[string]func(*Row) any{
+	"row_id":      func(r *Row) any { return &r.RowID },
+	"row_kind":    func(r *Row) any { return &r.RowKind },
+	"asset_id":    func(r *Row) any { return &r.AssetID },
+	"asset_kind":  func(r *Row) any { return &r.AssetKind },
+	"asset_value": func(r *Row) any { return &r.AssetValue },
+	// ip is PG type inet; scan through netip.Prefix and reduce a
+	// single-host prefix (/32, /128) to the bare address string.
+	"ip":              func(r *Row) any { return &r.ipPrefix },
+	"domain":          func(r *Row) any { return &r.Domain },
+	"hostname":        func(r *Row) any { return &r.Hostname },
+	"asn":             func(r *Row) any { return &r.ASN },
+	"asn_org":         func(r *Row) any { return &r.ASNOrg },
+	"geo_country":     func(r *Row) any { return &r.GeoCountry },
+	"geo_region":      func(r *Row) any { return &r.GeoRegion },
+	"geo_city":        func(r *Row) any { return &r.GeoCity },
+	"port":            func(r *Row) any { return &r.Port },
+	"transport":       func(r *Row) any { return &r.Transport },
+	"protocol":        func(r *Row) any { return &r.Protocol },
+	"name":            func(r *Row) any { return &r.Name },
+	"product":         func(r *Row) any { return &r.Product },
+	"version":         func(r *Row) any { return &r.Version },
+	"http_status":     func(r *Row) any { return &r.HTTPStatus },
+	"http_title":      func(r *Row) any { return &r.HTTPTitle },
+	"http_server":     func(r *Row) any { return &r.HTTPServer },
+	"tls_version":     func(r *Row) any { return &r.TLSVersion },
+	"cert_subject_cn": func(r *Row) any { return &r.TLSCertSubjectCN },
+	"cert_issuer_cn":  func(r *Row) any { return &r.TLSCertIssuerCN },
+	"cert_expiry":     func(r *Row) any { return &r.TLSCertExpiry },
+	"technologies":    func(r *Row) any { return &r.Technologies },
+	"sources":         func(r *Row) any { return &r.Sources },
+	"first_seen":      func(r *Row) any { return &r.FirstSeen },
+	"last_seen":       func(r *Row) any { return &r.LastSeen },
+	"stale":           func(r *Row) any { return &r.Stale },
+}
+
 func scanRow(rows pgx.Rows) (Row, error) {
 	var r Row
 	fields := rows.FieldDescriptions()
 	ptrs := make([]any, len(fields))
 
 	for i, f := range fields {
-		var target any
-		switch f.Name {
-		case "row_id":
-			target = &r.RowID
-		case "row_kind":
-			target = &r.RowKind
-		case "asset_id":
-			target = &r.AssetID
-		case "asset_kind":
-			target = &r.AssetKind
-		case "asset_value":
-			target = &r.AssetValue
-		case "ip":
-			// ip is PG type inet; scan through netip.Prefix and reduce a
-			// single-host prefix (/32, /128) to the bare address string.
-			target = &r.ipPrefix
-		case "domain":
-			target = &r.Domain
-		case "hostname":
-			target = &r.Hostname
-		case "asn":
-			target = &r.ASN
-		case "asn_org":
-			target = &r.ASNOrg
-		case "geo_country":
-			target = &r.GeoCountry
-		case "geo_region":
-			target = &r.GeoRegion
-		case "geo_city":
-			target = &r.GeoCity
-		case "port":
-			target = &r.Port
-		case "transport":
-			target = &r.Transport
-		case "protocol":
-			target = &r.Protocol
-		case "name":
-			target = &r.Name
-		case "product":
-			target = &r.Product
-		case "version":
-			target = &r.Version
-		case "http_status":
-			target = &r.HTTPStatus
-		case "http_title":
-			target = &r.HTTPTitle
-		case "http_server":
-			target = &r.HTTPServer
-		case "tls_version":
-			target = &r.TLSVersion
-		case "cert_subject_cn":
-			target = &r.TLSCertSubjectCN
-		case "cert_issuer_cn":
-			target = &r.TLSCertIssuerCN
-		case "cert_expiry":
-			target = &r.TLSCertExpiry
-		case "technologies":
-			target = &r.Technologies
-		case "sources":
-			target = &r.Sources
-		case "first_seen":
-			target = &r.FirstSeen
-		case "last_seen":
-			target = &r.LastSeen
-		case "stale":
-			target = &r.Stale
-		default:
-			// Unknown projected column — scan into a discard buffer so
-			// the row stays consumable.
-			var discard any
-			target = &discard
+		if get, ok := rowScanTargets[f.Name]; ok {
+			ptrs[i] = get(&r)
+			continue
 		}
-		ptrs[i] = target
+		// Unknown projected column — scan into a discard buffer so
+		// the row stays consumable.
+		var discard any
+		ptrs[i] = &discard
 	}
 	if err := rows.Scan(ptrs...); err != nil {
 		return Row{}, err
@@ -306,6 +222,3 @@ func formatPrefix(p netip.Prefix) string {
 	}
 	return p.String()
 }
-
-// jsonIndent is a tiny helper for surfaces that want pretty JSON.
-func jsonIndent(v any) ([]byte, error) { return json.MarshalIndent(v, "", "  ") }

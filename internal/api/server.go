@@ -116,7 +116,7 @@ func (s *Server) Handler() http.Handler {
 // ---------------------------------------------------------------------------
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	writeData(w, r, http.StatusOK, map[string]string{"status": "ok"})
+	writeData(w, r, map[string]string{"status": "ok"})
 }
 
 func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
@@ -130,14 +130,14 @@ func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	writeData(w, r, http.StatusOK, map[string]any{
+	writeData(w, r, map[string]any{
 		"status": "ready",
 		"index":  meta,
 	})
 }
 
 func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
-	writeData(w, r, http.StatusOK, version.Current())
+	writeData(w, r, version.Current())
 }
 
 func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
@@ -146,7 +146,7 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		writeSearchError(w, r, err)
 		return
 	}
-	writeData(w, r, http.StatusOK, meta)
+	writeData(w, r, meta)
 }
 
 // searchRequest is the shared shape for GET params and POST body.
@@ -173,7 +173,7 @@ func (s *Server) runSearch(w http.ResponseWriter, r *http.Request, req searchReq
 		writeSearchError(w, r, err)
 		return
 	}
-	writeData(w, r, http.StatusOK, map[string]any{
+	writeData(w, r, map[string]any{
 		"rows":        res.Rows,
 		"count":       res.Query.RowCount,
 		"has_more":    res.HasMore,
@@ -234,7 +234,7 @@ func (s *Server) handleFacets(w http.ResponseWriter, r *http.Request) {
 		writeSearchError(w, r, err)
 		return
 	}
-	writeData(w, r, http.StatusOK, map[string]any{
+	writeData(w, r, map[string]any{
 		"facets": res.Facets,
 		"query":  res.Query,
 	})
@@ -330,7 +330,7 @@ func (s *Server) handleValidate(w http.ResponseWriter, r *http.Request) {
 		writeSearchError(w, r, err)
 		return
 	}
-	writeData(w, r, http.StatusOK, map[string]any{
+	writeData(w, r, map[string]any{
 		"valid":  true,
 		"mode":   plan.Mode.String(),
 		"branch": plan.Branch.String(),
@@ -351,7 +351,7 @@ func (s *Server) handleExplain(w http.ResponseWriter, r *http.Request) {
 		writeSearchError(w, r, err)
 		return
 	}
-	writeData(w, r, http.StatusOK, map[string]any{
+	writeData(w, r, map[string]any{
 		"mode":    plan.Mode.String(),
 		"branch":  plan.Branch.String(),
 		"sql":     plan.SQL,

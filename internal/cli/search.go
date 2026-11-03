@@ -229,9 +229,9 @@ func runSearch(cmd *cobra.Command, args []string, sf searchFlags) error {
 
 	switch cfg.Profile {
 	case config.ProfileClient:
-		return clientSearch(cmd, out, cfg, q, facetsRequest{Enabled: fFacets, Dims: sf.FacetDims, MaxValues: sf.MaxValues})
+		return clientSearch(out, cfg, q, facetsRequest{Enabled: fFacets, Dims: sf.FacetDims, MaxValues: sf.MaxValues})
 	default:
-		return localSearch(cmd, out, cfg, q, facetsRequest{Enabled: fFacets, Dims: sf.FacetDims, MaxValues: sf.MaxValues})
+		return localSearch(out, cfg, q, facetsRequest{Enabled: fFacets, Dims: sf.FacetDims, MaxValues: sf.MaxValues})
 	}
 }
 
@@ -246,7 +246,7 @@ type facetsRequest struct {
 // Self-hosted: query the local index directly through the SearchService
 // ---------------------------------------------------------------------------
 
-func localSearch(cmd *cobra.Command, out io.Writer, cfg *config.Config, q search.Query, fr facetsRequest) error {
+func localSearch(out io.Writer, cfg *config.Config, q search.Query, fr facetsRequest) error {
 	// Give the overall context generous headroom beyond the query's own
 	// statement timeout (connect + stats round-trips).
 	budget := 45 * time.Second
@@ -266,7 +266,7 @@ func localSearch(cmd *cobra.Command, out io.Writer, cfg *config.Config, q search
 	svc := search.New(pool)
 	res, err := svc.Search(ctx, q)
 	if err != nil {
-		renderSearchError(cmd, out, err)
+		renderSearchError(out, err)
 		exitWith(searchExitCode(err))
 	}
 
@@ -280,7 +280,7 @@ func localSearch(cmd *cobra.Command, out io.Writer, cfg *config.Config, q search
 			MaxValues: fr.MaxValues, Facets: fr.Dims,
 		})
 		if err != nil {
-			renderSearchError(cmd, out, err)
+			renderSearchError(out, err)
 			exitWith(searchExitCode(err))
 		}
 	}
@@ -343,8 +343,8 @@ type apiEnvelope struct {
 	} `json:"meta"`
 }
 
-func clientSearch(cmd *cobra.Command, out io.Writer, cfg *config.Config, q search.Query, fr facetsRequest) error {
-	endpoint := strings.TrimRight(cfg.Client.Endpoint, "/")
+// searchRequestParams builds the /api/v1/search query string from q.
+func searchRequestParams(q search.Query) url.Values {
 	params := url.Values{}
 	params.Set("q", q.GQL)
 	if q.Mode != "" {
@@ -362,14 +362,51 @@ func clientSearch(cmd *cobra.Command, out io.Writer, cfg *config.Config, q searc
 	if len(q.Fields) > 0 {
 		params.Set("fields", strings.Join(q.Fields, ","))
 	}
+	return params
+}
+
+// clientFacetsOrFail fetches the facets envelope or prints the mapped
+// error and exits (the CLI has no way to recover from an endpoint error
+// mid-render).
+func clientFacetsOrFail(out io.Writer, endpoint string, q search.Query, fr facetsRequest) []search.Facet {
+	facets, ferr := clientFacets(endpoint, q, fr)
+	if ferr != nil {
+		printf(out, "%s", ferr.Error())
+		exitWith(searchExitCode(ferr))
+	}
+	return facets
+}
+
+// renderFacetBlock prints the shared "Facets" table under search results
+// (same shape on the local and the client path).
+func renderFacetBlock(out io.Writer, facets []search.Facet) {
+	printf(out, "\nFacets (same filter, same SearchService):\n")
+	for _, f := range facets {
+		parts := make([]string, 0, len(f.Values))
+		for _, v := range f.Values {
+			parts = append(parts, fmt.Sprintf("%s (%d)", v.Value, v.Count))
+		}
+		line := strings.Join(parts, ", ")
+		if f.Truncated {
+			line += ", …"
+		}
+		if line == "" {
+			line = "(no values)"
+		}
+		printf(out, "  %-11s %s\n", f.Name, line)
+	}
+}
+
+func clientSearch(out io.Writer, cfg *config.Config, q search.Query, fr facetsRequest) error {
+	endpoint := strings.TrimRight(cfg.Client.Endpoint, "/")
 
 	hc := &http.Client{Timeout: 35 * time.Second}
-	resp, err := hc.Get(endpoint + "/api/v1/search?" + params.Encode())
+	resp, err := hc.Get(endpoint + "/api/v1/search?" + searchRequestParams(q).Encode())
 	if err != nil {
 		printf(out, "E_ENDPOINT_UNREACHABLE: the configured endpoint did not answer\nWhy: %v\nTry: check client.endpoint in the config; the server must be running (gseer server start)\n", err)
 		exitWith(ExitUnavailable)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var env apiEnvelope
 	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
@@ -405,13 +442,8 @@ func clientSearch(cmd *cobra.Command, out io.Writer, cfg *config.Config, q searc
 		if fr.Enabled {
 			// The facets come from the dedicated facets endpoint (same
 			// envelope contract).
-			facets, ferr := clientFacets(endpoint, q, fr)
-			if ferr != nil {
-				printf(out, "%s", ferr.Error())
-				exitWith(searchExitCode(ferr))
-			}
 			data := env.Data
-			data["facets"] = facets
+			data["facets"] = clientFacetsOrFail(out, endpoint, q, fr)
 			_ = enc.Encode(data)
 			return nil
 		}
@@ -431,26 +463,7 @@ func clientSearch(cmd *cobra.Command, out io.Writer, cfg *config.Config, q searc
 		printf(out, "\nNext page: gseer search --cursor %s <query>\n", nextCursor)
 	}
 	if fr.Enabled {
-		facets, ferr := clientFacets(endpoint, q, fr)
-		if ferr != nil {
-			printf(out, "%s", ferr.Error())
-			exitWith(searchExitCode(ferr))
-		}
-		printf(out, "\nFacets (same filter, same SearchService):\n")
-		for _, f := range facets {
-			parts := make([]string, 0, len(f.Values))
-			for _, v := range f.Values {
-				parts = append(parts, fmt.Sprintf("%s (%d)", v.Value, v.Count))
-			}
-			line := strings.Join(parts, ", ")
-			if f.Truncated {
-				line += ", …"
-			}
-			if line == "" {
-				line = "(no values)"
-			}
-			printf(out, "  %-11s %s\n", f.Name, line)
-		}
+		renderFacetBlock(out, clientFacetsOrFail(out, endpoint, q, fr))
 	}
 	return nil
 }
@@ -473,7 +486,7 @@ func clientFacets(endpoint string, q search.Query, fr facetsRequest) ([]search.F
 	if err != nil {
 		return nil, &search.QueryError{Code: "E_ENDPOINT_UNREACHABLE", Detail: err.Error()}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	var env apiEnvelope
 	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
 		return nil, &search.QueryError{Code: "E_ENDPOINT_BAD_RESPONSE", Detail: "unparseable facets response"}
@@ -549,9 +562,7 @@ func renderResult(out io.Writer, res *search.Result, asJSON bool) {
 	for _, r := range res.Rows {
 		printf(out, "  %s\n", rowLine(r))
 	}
-	if res.Query.RowCount > 0 && res.Query.RowCount <= 5 {
-		// Small result sets get the full-detail hint; wide tables stay one line.
-	}
+	// Small result sets get the full-detail hint; wide tables stay one line.
 	if res.HasMore && res.NextCursor != "" {
 		printf(out, "\nNext page: append --cursor %s\n", res.NextCursor)
 	}
@@ -599,7 +610,7 @@ func itoa2(n *int) string {
 
 // renderSearchError prints the error in the SPEC-03 §7 shape and maps
 // PG-level surprises (unmigrated index) to actionable pointers.
-func renderSearchError(cmd *cobra.Command, out io.Writer, err error) {
+func renderSearchError(out io.Writer, err error) {
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "42P01" {
 		printf(out, "E_DB_NOT_MIGRATED: the search index does not exist yet\n"+

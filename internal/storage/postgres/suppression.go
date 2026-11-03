@@ -183,7 +183,6 @@ func (s *Store) loadGate(ctx context.Context) (*gate, error) {
 
 // ingestFactResult distinguishes "skipped by suppression" from "applied".
 type ingestOutcome struct {
-	res        FactResult
 	suppressed bool
 	rule       suppress.Rule
 }

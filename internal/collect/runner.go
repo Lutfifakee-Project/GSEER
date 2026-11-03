@@ -67,12 +67,6 @@ func NewRunner(store *postgres.Store, client *Client) *Runner {
 	return &Runner{Store: store, Client: client}
 }
 
-// withCollectors is the test seam: it replaces the connector registry.
-func (r *Runner) withCollectors(m map[string]Collector) *Runner {
-	r.collectors = m
-	return r
-}
-
 func (r *Runner) registry() map[string]Collector {
 	if r.collectors != nil {
 		return r.collectors
@@ -182,7 +176,7 @@ func (r *Runner) runPass(ctx context.Context, src postgres.DataSourceRow, col Co
 		}
 		stats.Batches++
 		stats.Records += len(batch.Raws)
-		if err := r.pipeline(ctx, src, cfg, batch, stats); err != nil {
+		if err := r.pipeline(ctx, src, batch, stats); err != nil {
 			return err
 		}
 		if batch.Cursor != "" {
@@ -208,7 +202,7 @@ func (r *Runner) runPass(ctx context.Context, src postgres.DataSourceRow, col Co
 
 // pipeline turns one batch's raw records into facts and ingests them,
 // dead-lettering the records that could not be applied.
-func (r *Runner) pipeline(ctx context.Context, src postgres.DataSourceRow, cfg SourceConfig, batch *Batch, stats *RunStats) error {
+func (r *Runner) pipeline(ctx context.Context, src postgres.DataSourceRow, batch *Batch, stats *RunStats) error {
 	facts, bad := BuildFacts(src.Connector, batch.Raws)
 	stats.Facts += len(facts)
 
@@ -346,7 +340,7 @@ func deliveryCursor(batchCursor string, index int) string {
 // correctness).
 func observationID(sourceID int64, cursor string) int64 {
 	h := fnv.New64a()
-	fmt.Fprintf(h, "collect:%d:%s", sourceID, cursor)
+	_, _ = fmt.Fprintf(h, "collect:%d:%s", sourceID, cursor)
 	return int64(h.Sum64() & 0x7fff_ffff_ffff_ffff) // positive BIGINT
 }
 

@@ -82,7 +82,7 @@ func keygen(args []string) {
 	if err != nil {
 		fatal("keygen: %v", err)
 	}
-	if err := os.WriteFile(*pubPath, []byte(base64.StdEncoding.EncodeToString(pub)+"\n"), 0o644); err != nil {
+	if err := os.WriteFile(*pubPath, []byte(base64.StdEncoding.EncodeToString(pub)+"\n"), 0o644); err != nil { // #nosec G306 -- the PUBLIC key is a public artifact; the private half is written 0600 below
 		fatal("write pub: %v", err)
 	}
 	if err := os.WriteFile(*privPath, []byte(base64.StdEncoding.EncodeToString(priv)+"\n"), 0o600); err != nil {
@@ -93,7 +93,7 @@ func keygen(args []string) {
 }
 
 func loadPriv(path string) ed25519.PrivateKey {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- the key ceremony tool reads the operator-supplied private-key path
 	if err != nil {
 		fatal("read key: %v", err)
 	}
@@ -105,7 +105,7 @@ func loadPriv(path string) ed25519.PrivateKey {
 }
 
 func loadPub(path string) ed25519.PublicKey {
-	raw, err := os.ReadFile(path)
+	raw, err := os.ReadFile(path) // #nosec G304 -- the key ceremony tool reads the operator-supplied public-key path
 	if err != nil {
 		fatal("read pub: %v", err)
 	}
@@ -140,7 +140,7 @@ func signCmd(args []string) {
 	if err != nil {
 		fatal("sign: %v", err)
 	}
-	if err := os.WriteFile(*outPath, signed, 0o644); err != nil {
+	if err := os.WriteFile(*outPath, signed, 0o644); err != nil { // #nosec G306 -- the signed manifest is a public release artifact (signature + metadata, no secrets)
 		fatal("write signed manifest: %v", err)
 	}
 	fmt.Printf("signed → %s (version %s, %d artifacts)\n", *outPath, m.Version, len(m.Artifacts))

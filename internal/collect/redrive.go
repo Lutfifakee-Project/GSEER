@@ -193,8 +193,10 @@ func redriveObservationID(sourceID, deadLetterID int64) int64 {
 	// Same fnv bookkeeping scheme as the runner/fixture id assignments,
 	// namespaced so the id spaces never collide.
 	h := fnv.New64a()
-	fmt.Fprintf(h, "redrive:%d:%d", sourceID, deadLetterID)
-	return int64(h.Sum64())
+	_, _ = fmt.Fprintf(h, "redrive:%d:%d", sourceID, deadLetterID)
+	// Mask to 63 bits: observations.id is a positive BIGINT and the
+	// conversion must never overflow (same convention as runner.observationID).
+	return int64(h.Sum64() & 0x7fff_ffff_ffff_ffff)
 }
 
 func firstBadReason(bad []BadRecord) string {

@@ -345,6 +345,165 @@ func resolveProjectionColumn(name string) string {
 // paths are canonical, types match, ops are allowed.  Compile does not
 // re-validate semantics; it does check the planner-specific options
 // (sort field, mode, limit, timeout, cursor shape).
+// compileOptions validates the planner-specific options and applies the
+// defaults (limit, timeout, sort).  row_id is ALWAYS appended as the ASC
+// tiebreaker (renderSort handles that), so the user-visible sorts must
+// not include row_id.
+func compileOptions(opts Options) (limit int, timeout time.Duration, sorts []SortSpec, err error) {
+	if opts.Limit < 0 || opts.Limit > MaxLimit {
+		return 0, 0, nil, &Error{
+			Code:   CodePlanLimit,
+			Detail: fmt.Sprintf("limit %d is out of range (0–%d)", opts.Limit, MaxLimit),
+			Why:    "0 means the server default; the hard cap protects the API",
+			Next:   fmt.Sprintf("try: --limit %d", DefaultLimit),
+		}
+	}
+	limit = opts.Limit
+	if limit == 0 {
+		limit = DefaultLimit
+	}
+
+	if opts.Timeout > 0 && (opts.Timeout < MinTimeout || opts.Timeout > MaxTimeout) {
+		return 0, 0, nil, &Error{
+			Code:   CodePlanTimeout,
+			Detail: fmt.Sprintf("timeout %s is out of range (%s–%s)", opts.Timeout, MinTimeout, MaxTimeout),
+			Why:    "PD-1 hard cap is 30s; sub-100ms timeouts are not useful at PG round-trip",
+			Next:   "try: --timeout 5s",
+		}
+	}
+	timeout = opts.Timeout
+	if timeout == 0 {
+		timeout = 5 * time.Second
+	}
+
+	// Normalize sort.  Empty = default: last_seen DESC.
+	sorts = opts.Sort
+	if len(sorts) == 0 {
+		sorts = []SortSpec{{Field: "last_seen", Direction: DirDesc}}
+	}
+	for _, s := range sorts {
+		if !sortableFields[s.Field] {
+			return 0, 0, nil, &Error{
+				Code:   CodePlanSortField,
+				Detail: fmt.Sprintf("field %q is not sortable", s.Field),
+				Why:    "list and bool fields have no meaningful ordering; row_id and the witness fields are sortable",
+				Next:   "try: --sort last_seen:desc",
+			}
+		}
+	}
+	return limit, timeout, sorts, nil
+}
+
+// resolveProjection maps the requested fields onto search_index columns.
+// Accept canonical paths (e.g. "http.title"), their column-name spelling
+// ("http_title"), or the row_id / row_kind / asset_id bookkeeping
+// columns that the registry does not surface.  Empty = all columns.
+func resolveProjection(fields []string) ([]string, error) {
+	if len(fields) == 0 {
+		return allSearchColumns, nil
+	}
+	resolved := make([]string, 0, len(fields))
+	for _, f := range fields {
+		col := resolveProjectionColumn(f)
+		if col == "" {
+			// Allow the bookkeeping columns the registry omits.
+			switch f {
+			case "row_id", "row_kind", "asset_id":
+				col = f
+			default:
+				return nil, &Error{
+					Code:   CodePlanProjection,
+					Detail: fmt.Sprintf("projection field %q is not a search_index column", f),
+					Why:    "the planner projects only canonical search_index columns",
+					Next:   "see the field registry: gseer search --help",
+				}
+			}
+		}
+		resolved = append(resolved, col)
+	}
+	return resolved, nil
+}
+
+// decodeCursorForSort decodes the page cursor (if any) and validates it
+// matches the first sort field (a cursor is tied to the sort order of
+// the page that produced it).
+func decodeCursorForSort(cursor string, sorts []SortSpec) (*CursorPayload, error) {
+	if cursor == "" {
+		return nil, nil
+	}
+	cp, err := DecodeCursor(cursor)
+	if err != nil {
+		return nil, err
+	}
+	if cp != nil && cp.SortField != sorts[0].Field {
+		return nil, &Error{
+			Code:   CodePlanCursor,
+			Detail: fmt.Sprintf("cursor was for sort field %q; current sort starts with %q", cp.SortField, sorts[0].Field),
+			Why:    "a cursor is tied to the sort order of the page that produced it",
+			Next:   "drop --cursor to start a fresh page, or restore the matching --sort",
+		}
+	}
+	return cp, nil
+}
+
+// composeSelect renders the final SELECT.  ModeAsset wraps the body in a
+// DISTINCT ON (asset_id) subquery that prefers the most-recent-last_seen
+// row; service mode queries search_index directly with the cursor
+// ANDed into the inner WHERE (keyset pagination over raw rows).
+func composeSelect(mode Mode, projection []string, sorts []SortSpec, whereSQL, whereSQLNoCursor, curPred, sortClause string, limitIdx int) string {
+	// For mode=asset the inner CTE projection MUST include asset_id and
+	// last_seen even if the caller did not ask for them — the outer
+	// DISTINCT ON (asset_id) and ORDER BY last_seen DESC depend on them.
+	projCols := strings.Join(quoteIdentList(projection), ", ")
+
+	var sql strings.Builder
+	if mode == ModeAsset {
+		// Asset mode: dedup FIRST, then cursor/ORDER/LIMIT on the
+		// deduped set.  (Paginating the raw rows and deduping per page
+		// would split one asset across pages and produce uneven page
+		// sizes — the cursor must advance over DISTINCT ASSETS.)
+		//
+		//   page CTE: DISTINCT ON (asset_id) keeps each asset's
+		//     representative row (max last_seen, then max row_id);
+		//     no LIMIT here — the limit applies to the deduped set.
+		//   outer: cursor predicate + user sort + LIMIT.
+		innerProj := append([]string{}, projection...)
+		for _, required := range []string{"asset_id", "row_id", "row_kind", "last_seen"} {
+			if !containsString(innerProj, required) {
+				innerProj = append(innerProj, required)
+			}
+		}
+		for _, s := range sorts {
+			col := columnName(s.Field)
+			if col != "" && !containsString(innerProj, col) {
+				innerProj = append(innerProj, col)
+			}
+		}
+		innerCols := strings.Join(quoteIdentList(innerProj), ", ")
+		sql.WriteString("WITH page AS (\n")
+		sql.WriteString("  SELECT DISTINCT ON (asset_id) " + innerCols + " FROM search_index\n")
+		sql.WriteString("  WHERE " + whereSQLNoCursor + "\n")
+		sql.WriteString("  ORDER BY asset_id, last_seen DESC NULLS LAST, row_id ASC\n")
+		sql.WriteString(")\n")
+		sql.WriteString("SELECT " + projCols + " FROM page\n")
+		if curPred != "" {
+			// The cursor predicate renders unqualified column names, so
+			// it binds to the page CTE's output columns here.
+			sql.WriteString("WHERE " + curPred + "\n")
+		}
+		sql.WriteString("ORDER BY " + sortClause + "\n")
+		sql.WriteString("LIMIT $" + fmt.Sprintf("%d", limitIdx) + "\n")
+	} else {
+		sql.WriteString("SELECT " + projCols + " FROM search_index\n")
+		sql.WriteString("WHERE " + whereSQL + "\n")
+		if sortClause != "" {
+			sql.WriteString("ORDER BY " + sortClause + "\n")
+		}
+		sql.WriteString("LIMIT $" + fmt.Sprintf("%d", limitIdx) + "\n")
+	}
+	return sql.String()
+}
+
 func Compile(root ast.Node, opts Options) (*Plan, error) {
 	if root == nil {
 		return nil, &Error{
@@ -355,96 +514,20 @@ func Compile(root ast.Node, opts Options) (*Plan, error) {
 		}
 	}
 
-	if opts.Limit < 0 || opts.Limit > MaxLimit {
-		return nil, &Error{
-			Code:   CodePlanLimit,
-			Detail: fmt.Sprintf("limit %d is out of range (0–%d)", opts.Limit, MaxLimit),
-			Why:    "0 means the server default; the hard cap protects the API",
-			Next:   fmt.Sprintf("try: --limit %d", DefaultLimit),
-		}
-	}
-	limit := opts.Limit
-	if limit == 0 {
-		limit = DefaultLimit
+	limit, timeout, sorts, err := compileOptions(opts)
+	if err != nil {
+		return nil, err
 	}
 
-	if opts.Timeout > 0 && (opts.Timeout < MinTimeout || opts.Timeout > MaxTimeout) {
-		return nil, &Error{
-			Code:   CodePlanTimeout,
-			Detail: fmt.Sprintf("timeout %s is out of range (%s–%s)", opts.Timeout, MinTimeout, MaxTimeout),
-			Why:    "PD-1 hard cap is 30s; sub-100ms timeouts are not useful at PG round-trip",
-			Next:   "try: --timeout 5s",
-		}
-	}
-	timeout := opts.Timeout
-	if timeout == 0 {
-		timeout = 5 * time.Second
-	}
-
-	// Normalize sort.  Empty = default: last_seen DESC.  row_id is
-	// ALWAYS appended as the ASC tiebreaker (renderSort handles that),
-	// so the user-visible sorts must not include row_id.
-	sorts := opts.Sort
-	if len(sorts) == 0 {
-		sorts = []SortSpec{{Field: "last_seen", Direction: DirDesc}}
-	}
-	for _, s := range sorts {
-		if !sortableFields[s.Field] {
-			return nil, &Error{
-				Code:   CodePlanSortField,
-				Detail: fmt.Sprintf("field %q is not sortable", s.Field),
-				Why:    "list and bool fields have no meaningful ordering; row_id and the witness fields are sortable",
-				Next:   "try: --sort last_seen:desc",
-			}
-		}
-	}
-
-	// Resolve projection fields against the search_index contract.
-	// Accept canonical paths (e.g. "http.title"), their column-name
-	// spelling ("http_title"), or the row_id / row_kind / asset_id
-	// bookkeeping columns that the registry does not surface.
-	projection := allSearchColumns
-	if len(opts.Fields) > 0 {
-		resolved := make([]string, 0, len(opts.Fields))
-		for _, f := range opts.Fields {
-			col := resolveProjectionColumn(f)
-			if col == "" {
-				// Allow the bookkeeping columns the registry omits.
-				switch f {
-				case "row_id", "row_kind", "asset_id":
-					col = f
-				default:
-					return nil, &Error{
-						Code:   CodePlanProjection,
-						Detail: fmt.Sprintf("projection field %q is not a search_index column", f),
-						Why:    "the planner projects only canonical search_index columns",
-						Next:   "see the field registry: gseer search --help",
-					}
-				}
-			}
-			resolved = append(resolved, col)
-		}
-		projection = resolved
+	projection, err := resolveProjection(opts.Fields)
+	if err != nil {
+		return nil, err
 	}
 
 	// Decode cursor (if any) and validate it matches the first sort field.
-	var cursorPayload *CursorPayload
-	if opts.Cursor != "" {
-		cp, err := DecodeCursor(opts.Cursor)
-		if err != nil {
-			return nil, err
-		}
-		if cp != nil {
-			if cp.SortField != sorts[0].Field {
-				return nil, &Error{
-					Code:   CodePlanCursor,
-					Detail: fmt.Sprintf("cursor was for sort field %q; current sort starts with %q", cp.SortField, sorts[0].Field),
-					Why:    "a cursor is tied to the sort order of the page that produced it",
-					Next:   "drop --cursor to start a fresh page, or restore the matching --sort",
-				}
-			}
-			cursorPayload = cp
-		}
+	cursorPayload, err := decodeCursorForSort(opts.Cursor, sorts)
+	if err != nil {
+		return nil, err
 	}
 
 	// Compile the WHERE clause.  b.args accumulates the positional
@@ -494,66 +577,15 @@ func Compile(root ast.Node, opts Options) (*Plan, error) {
 	// row scanning contract; (c) the timeout is an execution-layer
 	// concern, not a plan-shape concern.
 
-	// Compose the SELECT.  ModeAsset wraps the body in a DISTINCT ON
-	// (asset_id) subquery that prefers the most-recent-last_seen row.
-	// For mode=asset the inner CTE projection MUST include asset_id and
-	// last_seen even if the caller did not ask for them — the outer
-	// DISTINCT ON (asset_id) and ORDER BY last_seen DESC depend on them.
-	projCols := strings.Join(quoteIdentList(projection), ", ")
-
-	var sql strings.Builder
+	// Compose the SELECT (mode asset wraps the body in a DISTINCT ON
+	// subquery — see composeSelect).
 	if opts.Mode == ModeAsset {
 		branch.AssetAll = true
-		// Asset mode: dedup FIRST, then cursor/ORDER/LIMIT on the
-		// deduped set.  (Paginating the raw rows and deduping per page
-		// would split one asset across pages and produce uneven page
-		// sizes — the cursor must advance over DISTINCT ASSETS.)
-		//
-		//   page CTE: DISTINCT ON (asset_id) keeps each asset's
-		//     representative row (max last_seen, then max row_id);
-		//     no LIMIT here — the limit applies to the deduped set.
-		//   outer: cursor predicate + user sort + LIMIT.
-		//
-		// The CTE projection needs the requested columns plus every
-		// column the outer cursor predicate, ORDER BY, and DISTINCT ON
-		// reference (asset_id, row_id, last_seen, sort columns).
-		innerProj := append([]string{}, projection...)
-		for _, required := range []string{"asset_id", "row_id", "row_kind", "last_seen"} {
-			if !containsString(innerProj, required) {
-				innerProj = append(innerProj, required)
-			}
-		}
-		for _, s := range sorts {
-			col := columnName(s.Field)
-			if col != "" && !containsString(innerProj, col) {
-				innerProj = append(innerProj, col)
-			}
-		}
-		innerCols := strings.Join(quoteIdentList(innerProj), ", ")
-		sql.WriteString("WITH page AS (\n")
-		sql.WriteString("  SELECT DISTINCT ON (asset_id) " + innerCols + " FROM search_index\n")
-		sql.WriteString("  WHERE " + whereSQLNoCursor + "\n")
-		sql.WriteString("  ORDER BY asset_id, last_seen DESC NULLS LAST, row_id ASC\n")
-		sql.WriteString(")\n")
-		sql.WriteString("SELECT " + projCols + " FROM page\n")
-		if curPred != "" {
-			// The cursor predicate renders unqualified column names, so
-			// it binds to the page CTE's output columns here.
-			sql.WriteString("WHERE " + curPred + "\n")
-		}
-		sql.WriteString("ORDER BY " + sortClause + "\n")
-		sql.WriteString("LIMIT $" + fmt.Sprintf("%d", limitIdx) + "\n")
-	} else {
-		sql.WriteString("SELECT " + projCols + " FROM search_index\n")
-		sql.WriteString("WHERE " + whereSQL + "\n")
-		if sortClause != "" {
-			sql.WriteString("ORDER BY " + sortClause + "\n")
-		}
-		sql.WriteString("LIMIT $" + fmt.Sprintf("%d", limitIdx) + "\n")
 	}
+	sqlStr := composeSelect(opts.Mode, projection, sorts, whereSQL, whereSQLNoCursor, curPred, sortClause, limitIdx)
 
 	return &Plan{
-		SQL:              sql.String(),
+		SQL:              sqlStr,
 		Args:             args,
 		Branch:           branch,
 		Mode:             opts.Mode,
@@ -999,9 +1031,9 @@ func (p *Plan) Explain() string {
 	b.WriteString("branch:   " + p.Branch.String() + "\n")
 	b.WriteString("limit:    ")
 	if p.Limit == DefaultLimit {
-		b.WriteString(fmt.Sprintf("%d (server default)\n", p.Limit))
+		fmt.Fprintf(&b, "%d (server default)\n", p.Limit)
 	} else {
-		b.WriteString(fmt.Sprintf("%d\n", p.Limit))
+		fmt.Fprintf(&b, "%d\n", p.Limit)
 	}
 	b.WriteString("timeout:  " + p.Timeout.String() + "\n")
 	if len(p.Sort) > 0 {
@@ -1012,8 +1044,8 @@ func (p *Plan) Explain() string {
 		b.WriteString("sort:     " + strings.Join(parts, ", ") + "\n")
 	}
 	if p.CursorDecoded != nil {
-		b.WriteString(fmt.Sprintf("cursor:   field=%s row_id=%d value=%q\n",
-			p.CursorDecoded.SortField, p.CursorDecoded.RowID, p.CursorDecoded.Value))
+		fmt.Fprintf(&b, "cursor:   field=%s row_id=%d value=%q\n",
+			p.CursorDecoded.SortField, p.CursorDecoded.RowID, p.CursorDecoded.Value)
 	}
 	if len(p.ProjectionFields) > 0 && !equalStringSlices(p.ProjectionFields, allSearchColumns) {
 		b.WriteString("fields:   " + strings.Join(p.ProjectionFields, ", ") + "\n")
@@ -1022,7 +1054,7 @@ func (p *Plan) Explain() string {
 	b.WriteString(p.SQL)
 	b.WriteString("\n\nargs:\n")
 	for i, a := range p.Args {
-		b.WriteString(fmt.Sprintf("  $%d = %v\n", i+1, a))
+		fmt.Fprintf(&b, "  $%d = %v\n", i+1, a)
 	}
 	return b.String()
 }

@@ -69,6 +69,60 @@ evidence).  No breaking changes to the v0.0.2 surface.
   enrichment at ingestion (previously only source-provided
   fingerprint evidence).
 
+### Fixed (pre-release corrections, before the v0.1.0 tag)
+
+- **Security**: `github.com/go-chi/chi/v5` upgraded v5.2.1 → v5.5.0,
+  clearing GO-2025-3770 / GHSA-vrw8-fxc6-2r93 (open redirect in
+  `middleware.RedirectSlashes`) plus three further published chi
+  advisories (GHSA-3fxj-6jh8-hvhx, GHSA-j6qf-3m9c-vwj3,
+  GHSA-rqrp-8cg2-5958).  The API server never mounted any of the
+  affected middleware (client-IP handling is owned by
+  `internal/httpx`); `govulncheck ./...` now reports **zero**
+  vulnerabilities.  `golang.org/x/net` upgraded v0.56.0 → v0.62.0 for
+  the same reason.  A source-level regression test pins the API to the
+  advisory-free chi middleware subset.
+- **CI**: the lint job moved from `golangci-lint-action@v6` +
+  `version: latest` (which resolved to a v1.64.x binary built with Go
+  1.24 and could not process a Go 1.26 module) to
+  `golangci/golangci-lint-action@v9.3.0` (node24) with golangci-lint
+  pinned to **v2.15.0** (Go 1.26).  The existing v2 lint configuration
+  is preserved; obsolete v0.0.1/M1 workflow comments were refreshed.
+- **Lint**: the codebase is clean under golangci-lint v2.15.0 with the
+  existing rule set (no rules weakened; the only new exclusion is a
+  documented, narrowly-scoped G101 exemption for the compose generator's
+  format-placeholder templates).  Dead code removed, unchecked errors
+  made explicit, file/dir permission hardening (`update` target 0750,
+  executable mode kept for replaced binaries), 63-bit masking for
+  fnv-derived BIGINT bookkeeping ids, and eight complex functions
+  refactored table-driven without behavior change (full unit + race +
+  integration suites green before and after).
+- **Updater durability** (`internal/update`): `copyFile` now returns
+  only after the copy is written, chmod'd, fsynced AND closed — Close
+  errors surface when nothing earlier failed and cleanup never masks
+  the primary copy/sync error; the backup keeps the running binary's
+  exact permission bits via an explicit chmod (umask-proof, also on
+  re-backup over an old `.bak`), so a backup is only reported usable
+  once it is fully durable.  A failed post-rename directory fsync is no
+  longer silently ignored: it surfaces as the `E_UPDATE_DIRSYNC`
+  warning (binary replaced, nothing rolled back, crash durability not
+  guaranteed — `Apply` returns the result together with the warning,
+  `IsDirSyncWarning` detects it, and `gseer update --apply` prints it
+  without the false "left untouched" failure line).  Platform helpers:
+  explicit open+fsync+close of the directory on POSIX; on Windows the
+  replacement primitive itself is `MoveFileExW` with
+  `MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH` — Go's `os.Rename`
+  calls plain `MoveFileW` with NO flags (never write-through), so the
+  updater performs the replace itself; `MOVEFILE_COPY_ALLOWED` is
+  deliberately omitted so a cross-volume replace fails loudly instead
+  of degrading into a non-atomic copy.  Regression tests cover copy success /
+  copy failure / sync failure / close failure and their precedence,
+  backup permission preservation, atomic replacement, no-temp-leftover
+  cleanup, rollback (incl. failed-rollback reporting) and the
+  dir-sync warning contract.  Windows-specific coverage (flags passed
+  to `MoveFileExW`, replace with/without an existing target, API
+  errors, rollback, warning propagation) runs on the new
+  `update-windows` CI job (windows-latest, Go 1.27.x).
+
 ## [v0.0.2] — Passive Intelligence (Phase 2)
 
 Milestones M13–M17.

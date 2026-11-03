@@ -249,6 +249,19 @@ func lintRule(r *Rule) []Problem {
 	if len(r.Matches) == 0 {
 		problems = append(problems, p("matches", "no match specs", "add at least one field+pattern alternative"))
 	}
+	problems = append(problems, lintRuleMatches(r, p)...)
+	if len(r.Tests) < 2 {
+		problems = append(problems, p("tests", fmt.Sprintf("only %d test cases (need ≥2)", len(r.Tests)),
+			"at least one positive and one false-positive guard"))
+	}
+	problems = append(problems, lintRuleTests(r, p)...)
+	return problems
+}
+
+// lintRuleMatches validates every match spec of one rule (field names,
+// pattern compilation, version_group bounds, weight range).
+func lintRuleMatches(r *Rule, p func(field, detail, helpful string) Problem) []Problem {
+	var problems []Problem
 	for i, m := range r.Matches {
 		where := fmt.Sprintf("matches[%d]", i)
 		if !m.Field.valid() {
@@ -267,10 +280,13 @@ func lintRule(r *Rule) []Problem {
 			problems = append(problems, p(where+".weight", fmt.Sprintf("weight %v outside (0,1]", m.Weight), "omit the key for 1.0"))
 		}
 	}
-	if len(r.Tests) < 2 {
-		problems = append(problems, p("tests", fmt.Sprintf("only %d test cases (need ≥2)", len(r.Tests)),
-			"at least one positive and one false-positive guard"))
-	}
+	return problems
+}
+
+// lintRuleTests validates the false-positive regression block: every
+// test carries evidence and the set has ≥1 positive and ≥1 negative.
+func lintRuleTests(r *Rule, p func(field, detail, helpful string) Problem) []Problem {
+	var problems []Problem
 	var positives, negatives int
 	for i, t := range r.Tests {
 		if t.Match {
@@ -370,7 +386,7 @@ func LoadDir(dir string) ([]*Rule, []Problem, error) {
 	sort.Strings(names)
 	for _, name := range names {
 		path := filepath.Join(dir, name)
-		data, err := os.ReadFile(path)
+		data, err := os.ReadFile(path) // #nosec G304 -- reads the operator-supplied rules directory (--dir); loading it is the feature
 		if err != nil {
 			return rules, problems, err
 		}

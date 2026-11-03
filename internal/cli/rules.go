@@ -76,7 +76,7 @@ func rulesDirForLint() string {
 
 // loadRuleCollection loads the seed set plus the operator rules dir
 // (both list and the default validate path share it).
-func loadRuleCollection(cmd *cobra.Command) (*fprule.Registry, []fprule.Problem, error) {
+func loadRuleCollection() (*fprule.Registry, []fprule.Problem, error) {
 	dir := rulesDirForLint()
 	if dir == "" {
 		return fprule.Seed(), nil, nil
@@ -119,7 +119,7 @@ func fingerprintEngineFromConfig(cmd *cobra.Command, cfg *config.Config) (*fprul
 
 func runRulesList(cmd *cobra.Command, _ []string) error {
 	out := cmd.OutOrStdout()
-	reg, problems, err := loadRuleCollection(cmd)
+	reg, problems, err := loadRuleCollection()
 	if err != nil {
 		return err
 	}

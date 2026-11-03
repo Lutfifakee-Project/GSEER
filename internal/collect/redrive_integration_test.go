@@ -36,13 +36,13 @@ func TestRedriveResolvesRecoverableRecords(t *testing.T) {
 
 	// One run: a healthy record + one invalid record (dead-letter
 	// fodder, shape 1).
-	r.withCollectors(map[string]Collector{"dns": &fakeCollector{kind: "dns", batches: []*Batch{{
+	r.collectors = map[string]Collector{"dns": &fakeCollector{kind: "dns", batches: []*Batch{{
 		Raws: []RawFact{
 			{AssetKind: "ip", Value: "203.0.113.201", Confidence: "high"},
 			{AssetKind: "ip", Value: "not-an-ip", Confidence: "high"},
 		},
 		Done: true,
-	}}}})
+	}}}}
 	if _, err := r.Run(context.Background(), "redrive-dns"); err != nil {
 		t.Fatalf("run: %v", err)
 	}

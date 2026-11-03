@@ -23,21 +23,11 @@ import (
 	"time"
 
 	chimw "github.com/go-chi/chi/v5/middleware"
-
-	"github.com/Lutfifakee-Project/GSEER/internal/httpx"
 )
 
 // middleware.go — the API middlewares: client-IP resolution, the
 // per-IP fixed-window rate limiter with X-RateLimit-* headers, and the
 // request-meta carrier (request_id + start time for the envelope).
-
-// realIP is retired in favor of httpx.ResolveClientIP (M16: opt-in
-// trusted-proxy handling with the same peer-address-only default).  The
-// wrapper keeps the historical name for tests; new code uses the httpx
-// middleware directly.
-func realIP(next http.Handler) http.Handler {
-	return httpx.ResolveClientIP(nil)(next)
-}
 
 // requestMeta stamps the meta carrier (chi's RequestID middleware has
 // already put the ID in the context under its own key).

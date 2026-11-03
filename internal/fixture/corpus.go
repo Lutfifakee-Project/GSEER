@@ -263,7 +263,9 @@ func mustCanonicalJSON(obsRef string, evidence map[string]any) string {
 func observationBookkeepingID(sourceCursor string) int64 {
 	h := fnv.New64a()
 	_, _ = h.Write([]byte("fixture:" + sourceCursor))
-	return int64(h.Sum64())
+	// Mask to 63 bits: the bookkeeping id is a positive BIGINT; the mask
+	// keeps the derivation deterministic and overflow-free.
+	return int64(h.Sum64() & 0x7fff_ffff_ffff_ffff)
 }
 
 // LoadStats reports what Load did: the fixture source registry id the

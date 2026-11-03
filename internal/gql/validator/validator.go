@@ -83,11 +83,10 @@ type Field struct {
 // Operator-set composites the registry reads as a table (SPEC-04 §7
 // per-field compatibility, over the search_index column contract).
 var (
-	opEqNeq      = ast.OpSetEq | ast.OpSetNeq
-	opEqNeqIn    = opEqNeq | ast.OpSetIn
-	opStrText    = opEqNeqIn | ast.OpSetContains
-	opOrdered    = opEqNeqIn | ast.OpSetLt | ast.OpSetLe | ast.OpSetGt | ast.OpSetGe
-	opOrderedStr = opOrdered | ast.OpSetContains
+	opEqNeq   = ast.OpSetEq | ast.OpSetNeq
+	opEqNeqIn = opEqNeq | ast.OpSetIn
+	opStrText = opEqNeqIn | ast.OpSetContains
+	opOrdered = opEqNeqIn | ast.OpSetLt | ast.OpSetLe | ast.OpSetGt | ast.OpSetGe
 )
 
 // fields is the registry: canonical path → metadata.  Derived from the

@@ -19,7 +19,6 @@ package cli
 import (
 	"context"
 	"fmt"
-	"io"
 	"os"
 	"time"
 
@@ -99,7 +98,7 @@ func runExport(cmd *cobra.Command, args []string) error {
 
 	// Resolve the output BEFORE any query work: a bad path must fail
 	// fast, before the database is touched.
-	var dest io.Writer = out
+	dest := out
 	fName := ""
 	if fOut != "-" && fOut != "" {
 		p, err := export.ResolveOutPath(fOut, export.FormatExtension(fFormat), fForce)
@@ -107,12 +106,12 @@ func runExport(cmd *cobra.Command, args []string) error {
 			printf(out, "%s\n", err.Error())
 			exitWith(ExitInvalidInput)
 		}
-		f, err := os.Create(p)
+		f, err := os.Create(p) // #nosec G304 -- p was sanitized by export.ResolveOutPath (.. / control chars / overwrite refused)
 		if err != nil {
 			printf(out, "E_EXPORT_PATH: cannot create %s: %v\n", p, err)
 			exitWith(ExitInvalidInput)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		dest = f
 		fName = p
 	} else {
@@ -152,7 +151,7 @@ func runExport(cmd *cobra.Command, args []string) error {
 	// The stats line ALWAYS goes to the CLI output (never the file).
 	// When the stream itself is stdout, the stats go to STDERR so a
 	// piped/redirected stream stays parseable.
-	statusOut := io.Writer(out)
+	statusOut := out
 	if dest == out {
 		statusOut = cmd.ErrOrStderr()
 	}

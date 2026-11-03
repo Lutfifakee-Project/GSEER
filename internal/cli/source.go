@@ -164,7 +164,7 @@ func runSourceList(cmd *cobra.Command, _ []string) error {
 		printf(out, "No data sources registered.\nTry: gseer source add my-dns --type dns --seed-mode index --enable\n")
 		return nil
 	}
-	fmt.Fprintln(out, "NAME  CONNECTOR  ENABLED  TERMS  CONFIG")
+	_, _ = fmt.Fprintln(out, "NAME  CONNECTOR  ENABLED  TERMS  CONFIG")
 	for _, s := range sources {
 		terms := "—"
 		if s.TermsRef != "" {
@@ -174,7 +174,7 @@ func runSourceList(cmd *cobra.Command, _ []string) error {
 		if len(s.ConfigJSON) > 0 && string(s.ConfigJSON) != "{}" {
 			cfgStr = string(s.ConfigJSON)
 		}
-		fmt.Fprintf(out, "%s  %s  %-7v  %s  %s\n",
+		_, _ = fmt.Fprintf(out, "%s  %s  %-7v  %s  %s\n",
 			pad(s.Name, 24), pad(s.Connector, 10), s.Enabled,
 			truncate(terms, 60), truncate(cfgStr, 48))
 	}

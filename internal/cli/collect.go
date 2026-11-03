@@ -303,7 +303,7 @@ FROM data_sources s ORDER BY s.id`)
 		return nil
 	}
 	for _, r := range table {
-		fmt.Fprintf(out, "%s  %s  %-7v  %-4d  %d\n",
+		_, _ = fmt.Fprintf(out, "%s  %s  %-7v  %-4d  %d\n",
 			pad(r.name, 24), pad(r.connector, 10), r.enabled, r.jobs, r.pending)
 	}
 	printf(out, "\nJob stats (per run): gseer collect run reports them; history lives in collection_jobs.\n")

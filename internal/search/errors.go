@@ -18,7 +18,6 @@ package search
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 )
 
@@ -89,9 +88,4 @@ func AsQuery(err error) (*QueryError, bool) {
 	var q *QueryError
 	ok := errors.As(err, &q)
 	return q, ok
-}
-
-// timeoutErrString is used by tests to pin the exact rendered shape.
-func timeoutErrString(e *TimeoutError) string {
-	return fmt.Sprint(e)
 }

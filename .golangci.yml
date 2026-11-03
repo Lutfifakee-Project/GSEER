@@ -79,6 +79,16 @@ linters:
       # a shared prefix, not duplicate words in prose.
       - linters: [dupword]
         path: "internal/cli/root\\.go"
+      # gosec G101: internal/cli/compose.go holds the `setup
+      # --with-compose` GENERATOR templates whose DSN lines contain
+      # `postgres://gseer:%s@…` fmt PLACEHOLDERS — the credentials are
+      # cryptographically generated at write time and never hardcoded
+      # (the generated .env is chmod 0600).  gosec cannot see through
+      # the raw-string constant, so the finding is excluded for this
+      # generator file only; every other G101 still fails the build.
+      - linters: [gosec]
+        text: "G101"
+        path: "internal/cli/compose\\.go"
 
 issues:
   max-same-issues: 0

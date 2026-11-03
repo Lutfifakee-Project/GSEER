@@ -41,7 +41,6 @@ package collect
 
 import (
 	"fmt"
-	"net/netip"
 	"strings"
 	"time"
 
@@ -208,31 +207,6 @@ func firstRDAPEndpoint(services [][]any) string {
 		}
 	}
 	return ""
-}
-
-// rdapPrefixMatch is kept for future per-seed bootstrap matching (the
-// connector currently routes by address family only — the RIR endpoint
-// redirects when a finer split applies).
-func rdapPrefixMatch(services [][]any, addr netip.Addr) bool {
-	for _, svc := range services {
-		if len(svc) < 2 {
-			continue
-		}
-		cidrs, ok := svc[0].([]any)
-		if !ok {
-			continue
-		}
-		for _, c := range cidrs {
-			cs, ok := c.(string)
-			if !ok {
-				continue
-			}
-			if p, err := netip.ParsePrefix(cs); err == nil && p.Contains(addr) {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func init() { register(rdapConnector{}) }

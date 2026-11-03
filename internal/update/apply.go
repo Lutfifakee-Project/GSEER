@@ -90,7 +90,7 @@ func (f *Fetcher) Fetch(ctx context.Context, rawURL string) ([]byte, error) {
 			Next: "check network connectivity; retry later",
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, &Error{
 			Code: "E_UPDATE_HTTP",
@@ -133,6 +133,11 @@ type ApplyResult struct {
 // Apply runs the full chain: verify → version check → platform select →
 // fetch → checksum → atomic replace (+ backup, + rollback on failure).
 // currentVersion is the running binary's version string.
+//
+// If the replace itself succeeded but the directory durability sync
+// failed, Apply returns the result AND a warning error (see
+// IsDirSyncWarning): the binary was swapped and nothing was rolled back,
+// but the change may not survive a crash or power loss.
 func Apply(ctx context.Context, manifestBytes []byte, pub []byte, currentVersion, targetPath string, force bool, fetcher *Fetcher) (*ApplyResult, error) {
 	// 1. Signature FIRST — before anything in the manifest is believed.
 	manifest, err := ParseManifest(manifestBytes)
@@ -178,28 +183,40 @@ func Apply(ctx context.Context, manifestBytes []byte, pub []byte, currentVersion
 	}
 
 	// 5. Atomic replace with backup + rollback.
-	if err := replaceBinary(targetPath, payload); err != nil {
-		return nil, err
-	}
-	return &ApplyResult{
+	res := &ApplyResult{
 		PreviousVersion: currentVersion,
 		NewVersion:      manifest.Version,
 		Replaced:        targetPath,
 		Backup:          targetPath + ".bak",
 		Bytes:           int64(len(payload)),
-	}, nil
+	}
+	if err := replaceBinary(targetPath, payload); err != nil {
+		if IsDirSyncWarning(err) {
+			// The rename already succeeded: report the completed
+			// replacement together with the durability warning instead of
+			// pretending the update failed (nothing was rolled back).
+			return res, err
+		}
+		return nil, err
+	}
+	return res, nil
 }
 
 // replaceBinary writes payload to a temp file next to target (same
-// filesystem → os.Rename is atomic), fsyncs, preserves the mode,
+// filesystem → the platform rename primitive is atomic), fsyncs,
+// preserves the mode,
 // renames over the target, and keeps the previous file as target.bak.
-// Any failure rolls the target back from the backup and removes temps.
+// Any failure before the rename rolls the target back from the backup
+// and removes temps.  After a successful rename the only failure left is
+// the directory durability sync (E_UPDATE_DIRSYNC): the binary IS
+// replaced at that point, so the error is a warning — Apply returns the
+// result together with it and nothing is rolled back.
 func replaceBinary(target string, payload []byte) (err error) {
 	dir := filepath.Dir(target)
 	if st, serr := os.Stat(target); serr == nil && st.IsDir() {
 		return &Error{Code: "E_UPDATE_TARGET", What: "the update target is a directory", Why: target}
 	}
-	if derr := os.MkdirAll(dir, 0o755); derr != nil {
+	if derr := os.MkdirAll(dir, 0o750); derr != nil {
 		return &Error{Code: "E_UPDATE_TARGET", What: "cannot create the target directory", Why: derr.Error()}
 	}
 
@@ -220,11 +237,11 @@ func replaceBinary(target string, payload []byte) (err error) {
 	}()
 
 	if _, werr := tmp.Write(payload); werr != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return &Error{Code: "E_UPDATE_TEMP", What: "writing the payload failed", Why: werr.Error()}
 	}
 	if serr := tmp.Sync(); serr != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return &Error{Code: "E_UPDATE_TEMP", What: "fsync failed", Why: serr.Error()}
 	}
 	if cerr := tmp.Close(); cerr != nil {
@@ -234,7 +251,9 @@ func replaceBinary(target string, payload []byte) (err error) {
 		return &Error{Code: "E_UPDATE_TEMP", What: "cannot set the binary mode", Why: perr.Error()}
 	}
 
-	// Keep the running binary for rollback.
+	// Keep the running binary for rollback.  copyFile reports success
+	// only after the backup is fully written, fsynced AND closed, so
+	// hadBackup=true means the backup can really be restored from.
 	hadBackup := false
 	if _, serr := os.Stat(target); serr == nil {
 		// Copy the CURRENT file to .bak (rename would move it away while
@@ -245,7 +264,7 @@ func replaceBinary(target string, payload []byte) (err error) {
 		hadBackup = true
 	}
 
-	if rerr := os.Rename(tmpName, target); rerr != nil {
+	if rerr := renameFile(tmpName, target); rerr != nil {
 		// Rollback: restore the backup over the (possibly clobbered)
 		// target.  On most systems rename either succeeds or leaves the
 		// target untouched, but the recovery path is unconditional.
@@ -258,29 +277,82 @@ func replaceBinary(target string, payload []byte) (err error) {
 		}
 		return &Error{Code: "E_UPDATE_REPLACE", What: "atomic rename failed", Why: rerr.Error()}
 	}
-	// Re-sync the directory entry so the rename survives a crash.
-	if d, derr := os.Open(dir); derr == nil {
-		_ = d.Sync()
-		_ = d.Close()
+	// Re-sync the directory entry so the rename survives a crash.  The
+	// rename has ALREADY succeeded here: if the sync fails the binary is
+	// replaced but its durability is not guaranteed — never a rollback.
+	if serr := syncDir(dir); serr != nil {
+		return &Error{
+			Code: "E_UPDATE_DIRSYNC",
+			What: "the binary was replaced, but flushing the directory entry to disk failed",
+			Why:  serr.Error(),
+			Next: "the replacement stands (nothing was rolled back); after a crash or power loss the previous binary may reappear — re-run the update to make it durable",
+		}
 	}
 	return nil
 }
 
+// Test seams for file I/O: production always uses the real syscalls;
+// tests swap these one-line variables to inject sync/close/rename
+// failures without fake filesystems or FUSE mounts (not an abstraction).
+// renameFile defaults to the platform replacement primitive:
+// os.Rename on POSIX, MoveFileExW with
+// MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH on Windows (see
+// dirsync_unix.go / dirsync_windows.go — os.Rename itself passes no
+// write-through flag on Windows).
+var (
+	syncFile   = func(f *os.File) error { return f.Sync() }
+	closeFile  = func(f *os.File) error { return f.Close() }
+	renameFile = renameFileDefault
+)
+
+// syncDir runs the post-rename durability step (platform default: a
+// read-only open + fsync of the directory on POSIX; on Windows a no-op,
+// because the replacement primitive itself is write-through —
+// MoveFileExW with MOVEFILE_WRITE_THROUGH, see dirsync_windows.go).  A
+// package-level variable purely as a test seam — production always
+// uses syncDirDefault.
+var syncDir = syncDirDefault
+
+// copyFile copies src to dst, preserving src's permission bits, and
+// returns only after dst is written, chmod'd, fsynced AND closed — a nil
+// return means the copy is really on disk (the rollback path may rely on
+// the backup).  Error precedence: the first primary failure (copy, sync,
+// chmod) wins; Close errors surface only when nothing earlier failed, so
+// cleanup never masks the operation's own error.
 func copyFile(src, dst string) error {
-	in, err := os.Open(src)
+	in, err := os.Open(src) // #nosec G304 -- src is the currently-running binary (os.Executable) being backed up, or its .bak being restored
 	if err != nil {
 		return err
 	}
-	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o755)
+	si, serr := in.Stat()
+	if serr != nil {
+		_ = closeFile(in)
+		return serr
+	}
+	perm := si.Mode().Perm()
+
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm) // #nosec G304,G302 -- dst is the verified update target/backup path; the binary keeps its executable mode
 	if err != nil {
+		_ = closeFile(in)
 		return err
 	}
-	defer out.Close()
-	if _, err := io.Copy(out, in); err != nil {
-		return err
+	// OpenFile's perm argument is masked by the process umask (and ignored
+	// entirely when dst already exists) — the explicit chmod is what
+	// actually preserves the binary's mode on the backup/restore copy.
+	modeErr := os.Chmod(dst, perm) // #nosec G302 -- the mode is the source binary's own, not a hardcoded wide permission
+
+	_, copyErr := io.Copy(out, in)
+	syncErr := syncFile(out)
+	outCloseErr := closeFile(out)
+	inCloseErr := closeFile(in)
+
+	// Primary errors first; cleanup (Close) errors never overwrite them.
+	for _, perr := range []error{copyErr, syncErr, modeErr, outCloseErr, inCloseErr} {
+		if perr != nil {
+			return perr
+		}
 	}
-	return out.Sync()
+	return nil
 }
 
 // Check runs the verification chain WITHOUT downloading: signature,
@@ -320,11 +392,22 @@ func IsUpToDate(err error) bool {
 	return false
 }
 
+// IsDirSyncWarning reports whether err is the "replaced, but the
+// directory entry could not be flushed to disk" durability warning.
+// When it is true the binary WAS replaced — callers must not treat the
+// update as failed or rolled back; they should surface the warning.
+func IsDirSyncWarning(err error) bool {
+	var ue *Error
+	return errors.As(err, &ue) && ue.Code == "E_UPDATE_DIRSYNC"
+}
+
 // LoadManifest reads manifest bytes from a path or fetches a URL.
 func LoadManifest(ctx context.Context, location string, fetcher *Fetcher) ([]byte, error) {
 	if strings.HasPrefix(location, "http://") || strings.HasPrefix(location, "https://") {
 		return fetcher.Fetch(ctx, location)
 	}
+	// #nosec G304 -- the manifest location is an explicit operator-supplied
+	// CLI path (--check <path> / manifest URL); reading it is the feature.
 	data, err := os.ReadFile(location)
 	if err != nil {
 		return nil, &Error{Code: "E_UPDATE_MANIFEST_IO", What: "cannot read the manifest file", Why: err.Error()}

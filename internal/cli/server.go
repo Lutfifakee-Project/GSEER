@@ -170,7 +170,7 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 	pidPath := serverPIDPath(listen)
 	_ = os.WriteFile(pidPath, []byte(strconv.Itoa(os.Getpid())), 0o600)
 	defer func() {
-		if b, rerr := os.ReadFile(pidPath); rerr == nil && strings.TrimSpace(string(b)) == strconv.Itoa(os.Getpid()) {
+		if b, rerr := os.ReadFile(pidPath); rerr == nil && strings.TrimSpace(string(b)) == strconv.Itoa(os.Getpid()) { // #nosec G304 -- reads the server's OWN pidfile (path derived from the configured listen address)
 			_ = os.Remove(pidPath)
 		}
 	}()
@@ -281,9 +281,13 @@ func runServerStatus(cmd *cobra.Command, args []string) error {
 	hc := &http.Client{Timeout: 3 * time.Second}
 	resp, err := hc.Get("http://" + listen + "/api/v1/health")
 	if err != nil || resp.StatusCode != http.StatusOK {
+		if resp != nil {
+			_ = resp.Body.Close()
+		}
 		printf(out, "Server: RUNNING (pid %d) but the health endpoint did not answer\n", pid)
 		exitWith(ExitUnavailable)
 	}
+	_ = resp.Body.Close()
 	printf(out, "Server: RUNNING (pid %d) on http://%s — health OK\n", pid, listen)
 	return nil
 }

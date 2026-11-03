@@ -29,16 +29,16 @@ import (
 // Grammar (precedence `!` > `&&` > `||`; sugar normalized here):
 //
 //	query    := or EOF
-//	or       := and ( ( "||" | KW_OR ) and )*
-//	and      := not ( ( "&&" | KW_AND ) not )*
-//	not      := ( "!" | KW_NOT ) not | primary
+//	or       := and ( ( "||" | KwOr ) and )*
+//	and      := not ( ( "&&" | KwAnd ) not )*
 //	primary  := "(" or ")" | quantified | comparison | exists
-//	quantified := ( KW_ANY | KW_ALL ) "(" IDENT ")" "{" or "}"
+//	not      := ( "!" | KwNot ) not | primary
+//	quantified := ( KwAny | KwAll ) "(" IDENT ")" "{" or "}"
+//	predicate  := op value | KwIn "(" value ("," value)* ")"
 //	comparison := IDENT predicate
-//	predicate  := op value | KW_IN "(" value ("," value)* ")"
 //	exists     := IDENT            (no predicate follows)
 //	op         := "==" | "!=" | "=" | "<" | "<=" | ">" | ">=" |
-//	              KW_CONTAINS | KW_IN_CIDR | KW_IN_DOMAIN
+//	              KwContains | KwInCIDR | KwInDomain
 //	value      := STRING | INT
 //
 // Sugar: `=` parses as `==` (ASSIGN → OpEq); the keyword boolean forms
@@ -246,7 +246,7 @@ func (p *parser) parseOr() (ast.Node, error) {
 	}
 	for {
 		tok := p.peek()
-		if tok.Kind != lexer.OR && tok.Kind != lexer.KW_OR {
+		if tok.Kind != lexer.OR && tok.Kind != lexer.KwOr {
 			return left, nil
 		}
 		p.advance()
@@ -269,7 +269,7 @@ func (p *parser) parseAnd() (ast.Node, error) {
 	}
 	for {
 		tok := p.peek()
-		if tok.Kind != lexer.AND && tok.Kind != lexer.KW_AND {
+		if tok.Kind != lexer.AND && tok.Kind != lexer.KwAnd {
 			return left, nil
 		}
 		p.advance()
@@ -287,7 +287,7 @@ func (p *parser) parseAnd() (ast.Node, error) {
 // parseNot parses prefix negation (binds tighter than && and ||).
 func (p *parser) parseNot() (ast.Node, error) {
 	tok := p.peek()
-	if tok.Kind == lexer.NOT || tok.Kind == lexer.KW_NOT {
+	if tok.Kind == lexer.NOT || tok.Kind == lexer.KwNot {
 		p.advance()
 		inner, err := p.parseNot()
 		if err != nil {
@@ -319,7 +319,7 @@ func (p *parser) parsePrimary() (ast.Node, error) {
 		p.advance()
 		return inner, nil
 
-	case lexer.KW_ANY, lexer.KW_ALL:
+	case lexer.KwAny, lexer.KwAll:
 		return p.parseQuantified()
 
 	case lexer.IDENT:
@@ -341,7 +341,7 @@ func (p *parser) parsePrimary() (ast.Node, error) {
 func (p *parser) parseQuantified() (ast.Node, error) {
 	qtok := p.advance() // ANY | ALL
 	quant := ast.QuantAny
-	if qtok.Kind == lexer.KW_ALL {
+	if qtok.Kind == lexer.KwAll {
 		quant = ast.QuantAll
 	}
 	if open := p.peek(); open.Kind != lexer.LPAREN {
@@ -423,19 +423,19 @@ func (p *parser) parseFieldTail() (ast.Node, error) {
 	case lexer.GE:
 		p.advance()
 		return p.comparison(field, ast.OpGe)
-	case lexer.KW_CONTAINS:
+	case lexer.KwContains:
 		p.advance()
 		return p.comparison(field, ast.OpContains)
-	case lexer.KW_IN_CIDR:
+	case lexer.KwInCIDR:
 		p.advance()
 		return p.comparison(field, ast.OpInCidr)
-	case lexer.KW_IN_DOMAIN:
+	case lexer.KwInDomain:
 		p.advance()
 		return p.comparison(field, ast.OpInDomain)
-	case lexer.KW_IN:
+	case lexer.KwIn:
 		p.advance()
 		return p.inList(field)
-	case lexer.AND, lexer.KW_AND, lexer.OR, lexer.KW_OR, lexer.RPAREN, lexer.RBRACE, lexer.EOF:
+	case lexer.AND, lexer.KwAnd, lexer.OR, lexer.KwOr, lexer.RPAREN, lexer.RBRACE, lexer.EOF:
 		// No predicate: a bare-field presence test.
 		return &ast.Exists{Field: field.Text, Line: field.Line, Col: field.Col}, nil
 	default:

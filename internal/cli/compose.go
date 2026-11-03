@@ -202,14 +202,14 @@ func writeComposeFiles(dir string) (wrote []string, err error) {
 	envPath := filepath.Join(dir, ".env")
 
 	composeBody := composeTemplate
-	if existing, rerr := os.ReadFile(composePath); rerr == nil {
+	if existing, rerr := os.ReadFile(composePath); rerr == nil { // #nosec G304 -- reads the operator's existing compose file for the never-overwrite comparison
 		if strings.TrimSpace(string(existing)) != strings.TrimSpace(composeBody) {
 			return nil, fmt.Errorf("E_COMPOSE_EXISTS: %s already exists with different content\n"+
 				"Why: --with-compose never overwrites an operator-edited compose file\n"+
 				"Try: keep the existing file (it already defines the db service) or remove it first", composePath)
 		}
 	} else if os.IsNotExist(rerr) {
-		if werr := os.WriteFile(composePath, []byte(composeBody), 0o644); werr != nil {
+		if werr := os.WriteFile(composePath, []byte(composeBody), 0o644); werr != nil { // #nosec G306 -- no secrets in the compose file; the credential lives in .env (0600)
 			return nil, fmt.Errorf("E_COMPOSE_WRITE: cannot write %s: %w", composePath, werr)
 		}
 		wrote = append(wrote, composePath)
@@ -226,7 +226,7 @@ func writeComposeFiles(dir string) (wrote []string, err error) {
 	if perr != nil {
 		return nil, fmt.Errorf("E_COMPOSE_RANDOM: %w", perr)
 	}
-	envBody := fmt.Sprintf(envTemplateFmt, password, password)
+	envBody := fmt.Sprintf(envTemplateFmt, password, password) // #nosec G101 -- template placeholders filled with the runtime-generated password, not hardcoded credentials
 	if werr := os.WriteFile(envPath, []byte(envBody), 0o600); werr != nil {
 		return nil, fmt.Errorf("E_COMPOSE_WRITE: cannot write %s: %w", envPath, werr)
 	}
@@ -288,14 +288,14 @@ func writeFullComposeFiles(dir string) (wrote []string, err error) {
 	composePath := filepath.Join(dir, "docker-compose.full.yml")
 	envPath := filepath.Join(dir, ".env")
 
-	if existing, rerr := os.ReadFile(composePath); rerr == nil {
+	if existing, rerr := os.ReadFile(composePath); rerr == nil { // #nosec G304 -- reads the operator's existing full-stack compose for the never-overwrite comparison
 		if strings.TrimSpace(string(existing)) != strings.TrimSpace(fullComposeTemplate) {
 			return nil, fmt.Errorf("E_COMPOSE_EXISTS: %s already exists with different content\n"+
 				"Why: --with-compose never overwrites an operator-edited compose file\n"+
 				"Try: keep the existing file or remove it first", composePath)
 		}
 	} else if os.IsNotExist(rerr) {
-		if werr := os.WriteFile(composePath, []byte(fullComposeTemplate), 0o644); werr != nil {
+		if werr := os.WriteFile(composePath, []byte(fullComposeTemplate), 0o644); werr != nil { // #nosec G306 -- no secrets in the compose file; the credential lives in .env (0600)
 			return nil, fmt.Errorf("E_COMPOSE_WRITE: cannot write %s: %w", composePath, werr)
 		}
 		wrote = append(wrote, composePath)
@@ -316,7 +316,7 @@ func writeFullComposeFiles(dir string) (wrote []string, err error) {
 	if perr != nil {
 		return nil, fmt.Errorf("E_COMPOSE_RANDOM: %w", perr)
 	}
-	envBody := fmt.Sprintf(fullEnvTemplateFmt, password, token, password)
+	envBody := fmt.Sprintf(fullEnvTemplateFmt, password, token, password) // #nosec G101 -- template placeholders filled with runtime-generated secrets, not hardcoded credentials
 	if werr := os.WriteFile(envPath, []byte(envBody), 0o600); werr != nil {
 		return nil, fmt.Errorf("E_COMPOSE_WRITE: cannot write %s: %w", envPath, werr)
 	}
