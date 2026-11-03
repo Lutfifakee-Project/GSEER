@@ -144,6 +144,11 @@ func init() {
 	registerRulesCmd(RootCmd)
 	registerDBCmd(RootCmd)
 	registerComingLaterCmds(RootCmd)
+
+	// Banner before help for root-level invocations only
+	// (`gseer`, `gseer --help`, `gseer help`).  Subcommand help uses the
+	// default cobra help func and prints no banner.
+	RootCmd.SetHelpFunc(bannerHelpFunc)
 }
 
 // Execute runs the root command and returns the cobra error (if any).

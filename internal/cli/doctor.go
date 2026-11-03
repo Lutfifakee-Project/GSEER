@@ -60,7 +60,8 @@ Wired:
   - DB reachable + PG version compatible (PostgreSQL 15+, PD-8)
   - migrations at head (dirty state → gseer db migrate diagnose)
   - binary version / OS-arch / SHA-256 (self-reported; compare with the
-    release SHA256SUMS published alongside the release)
+    corresponding published release checksum when a binary release is
+    available)
   - index contents: EMPTY | counts | fixture-labeled honesty label
   - server reachability (client profile: probes the configured endpoint)
 

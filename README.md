@@ -1,5 +1,7 @@
 # GSEER
 
+![GSEER banner](banner.png)
+
 > Internet Asset Intelligence & Search Engine.
 > **Discover. Identify. Search.**
 
@@ -49,8 +51,14 @@ Everything runs on your machine: your database, your data, your rules.
 | PostgreSQL | 15+ if you run your own (v0.1.0 is verified against 17) |
 | OS | Linux / macOS / Windows |
 
-> No release tarball exists yet — build from source (below). Docker is
-> the easiest way to satisfy the PostgreSQL dependency.
+> v0.1.0 is a **source-only self-hosted release**. The artifact is the
+> source archive `GSEER-v0.1.0-source.zip` together with its SHA-256
+> checksum sidecar `GSEER-v0.1.0-source.zip.sha256`. This source archive
+> is the **only** downloadable release artifact for v0.1.0. There are no
+> prebuilt platform binaries, no binary packages, and no published
+> Docker image for this release. Build from source (below), or build the
+> Docker image locally via the `Dockerfile`. Docker is the easiest way
+> to satisfy the PostgreSQL dependency.
 
 ## Quick Start
 
@@ -330,4 +338,3 @@ enforces it.
 - [`docs/UPDATE.md`](docs/UPDATE.md) — the signed-update chain, key ceremony, recovery
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — release register (what is live per release)
 - [`CHANGELOG.md`](CHANGELOG.md) — per-release changes
-- [`GSEER_BACKLOG.md`](GSEER_BACKLOG.md) — milestone register with per-milestone test evidence

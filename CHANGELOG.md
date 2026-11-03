@@ -1,13 +1,11 @@
 # GSEER — Changelog
 
 All notable changes per release.  Format: Keep-a-Changelog-ish, newest
-first.  Versions follow semver (three-component).  The milestone-level
-verification evidence lives in `GSEER_BACKLOG.md`.
+first.  Versions follow semver (three-component).
 
 ## [v0.1.0] — First Useful Self-Hosted (Phase 3)
 
-Milestones M18–M24 (see `GSEER_BACKLOG.md` for the per-milestone test
-evidence).  No breaking changes to the v0.0.2 surface.
+Milestones M18–M24.  No breaking changes to the v0.0.2 surface.
 
 ### Added
 
@@ -168,8 +166,7 @@ Milestones M13–M17.
   (XFF ignored by default, right-most hop through configured CIDRs,
   fail-closed parse), dashboard GET-only/CSRF-surface pin, PID-file
   identity verification + 0600.
-- v0.1.0-style milestone register entries M13–M17 in
-  `GSEER_BACKLOG.md`.
+- Milestone register entries M13–M17.
 
 ## [v0.0.1] — Search Engine Developer Preview (Phase 1)
 

@@ -41,7 +41,7 @@ therefore cannot occur there.
 
 ## 2. Commands
 
-```
+```bash
 gseer update --check                  # verify manifest + report only (no download)
 gseer update --apply                  # full chain: verify → download → checksum → replace
 gseer update --apply --force          # allow same/older versions (re-install)
@@ -52,11 +52,21 @@ The manifest location comes from `update.manifest_url` (config file) or
 `GSEER_UPDATE_MANIFEST_URL`.  Without a configured channel the command
 fails with `E_UPDATE_NO_CHANNEL` and a pointer here.
 
+**v0.1.0 channel note.** The signed-update *mechanism* is implemented and
+shipped in v0.1.0, but GSEER does **not** host an official manifest or
+update feed for this release. There is no default `GSEER_UPDATE_MANIFEST_URL`
+and no `gseer update --check` success out of the box: a fresh install has
+no active channel until the operator provides and configures their own
+manifest URL (signed with the key embedded in the binary, per §3–§4).
+Until then, `gseer update` refuses with `E_UPDATE_NO_CHANNEL` — which is
+intentional: GSEER never downloads or applies updates from an unconfigured,
+unverified source.
+
 Recovery: the previous binary is always kept at `<binary>.bak`.  If a
 new build misbehaves, stop the server, move the old file back, start
 again:
 
-```
+```bash
 gseer server stop
 mv gseer.bak gseer
 gseer server start
@@ -86,7 +96,7 @@ changed after signing (including added fields) breaks verification.
 
 ## 4. Release process (maintainer)
 
-```
+```bash
 go run ./cmd/gseer-release keygen -pub gseer-update.pub -priv gseer-update.key
 #   → embed the PUBLIC key base64 into internal/update/keys.go
 #     (EmbeddedUpdatePublicKeyB64) and release binaries built from it.
@@ -96,7 +106,7 @@ go run ./cmd/gseer-release keygen -pub gseer-update.pub -priv gseer-update.key
 
 Per release:
 
-```
+```bash
 # 1. compute artifact hashes
 sha256sum gseer-v0.1.1-linux-amd64 gseer-v0.1.1-darwin-arm64 ...
 # 2. write manifest.json (version, released_at, artifacts, notes_url)

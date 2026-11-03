@@ -5,7 +5,7 @@
 > `gseer setup --with-compose` writes the compose + `.env` and prints
 > the next commands verbatim (QS-2), and `--full` writes the complete
 > db + server stack (`docs/DOCKER.md`).  A quickstart-linux CI job pins
-> this flow (AC-5.11).
+> this flow.
 
 ```bash
 # 0. Install the binary (docs/INSTALL.md), then:
