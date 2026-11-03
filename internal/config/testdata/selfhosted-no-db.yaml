@@ -1,0 +1,4 @@
+# Minimal self-hosted config: profile only, no database fields.
+# Used to test that DB defaults are applied (or not) based on the FINAL
+# resolved profile after CLI flag override, not the YAML profile.
+profile: self-hosted

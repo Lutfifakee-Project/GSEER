@@ -1,0 +1,5 @@
+# INVALID: malformed YAML — parse error.
+profile: self-hosted
+database:
+  host: "127.0.0.1"
+  port: [unclosed

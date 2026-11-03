@@ -1,0 +1,25 @@
+# Python — explicit "Python/<version>" token in the Server header.
+id: language-python
+family: language
+product: python
+confidence: 0.8
+provenance: |
+  Python-based dev servers (Werkzeug, SimpleHTTP) embed
+  "Python/<version>" in the Server header (documented stdlib
+  BaseHTTPRequestHandler server_version).  This rule matches the
+  explicit token only; it does not infer Python from Werkzeug/
+  gunicorn product names (the framework rules carry those).
+matches:
+  - field: http.server
+    pattern: 'Python/(\d+\.\d+(?:\.\d+)?)'
+    version_group: 1
+    weight: 0.9
+tests:
+  - evidence: {http: {server: "Werkzeug/2.3.7 Python/3.11.4"}}
+    match: true
+    version: "3.11.4"
+  - evidence: {http: {server: "SimpleHTTP/0.6 Python/3.10.0"}}
+    match: true
+    version: "3.10.0"
+  - evidence: {http: {server: "nginx/1.24.0"}}
+    match: false

@@ -1,0 +1,16 @@
+# Envoy proxy — default Server header "envoy".
+id: web-server-envoy
+family: web-server
+product: envoy
+confidence: 0.9
+provenance: |
+  Envoy sends "Server: envoy" by default (Envoy docs, http connection
+  manager server_name).  Anchored exact token.
+matches:
+  - field: http.server
+    pattern: '^envoy(?:\s|$)'
+tests:
+  - evidence: {http: {server: "envoy"}}
+    match: true
+  - evidence: {http: {server: "envoyproxy-custom"}}
+    match: false

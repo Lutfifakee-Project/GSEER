@@ -1,0 +1,18 @@
+# gunicorn — default Server header "gunicorn/<version>".
+id: web-server-gunicorn
+family: web-server
+product: gunicorn
+confidence: 0.9
+provenance: |
+  gunicorn sends "Server: gunicorn/<version>" by default (documented
+  gunicorn settings, server header).  Python WSGI server.
+matches:
+  - field: http.server
+    pattern: '^gunicorn/(\d+(?:\.\d+)*)'
+    version_group: 1
+tests:
+  - evidence: {http: {server: "gunicorn/20.1.0"}}
+    match: true
+    version: "20.1.0"
+  - evidence: {http: {server: "unicorn/5.4.0"}}
+    match: false

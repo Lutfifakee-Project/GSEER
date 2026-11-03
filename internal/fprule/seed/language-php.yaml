@@ -1,0 +1,22 @@
+# PHP — module signature embedded in the Server header.
+id: language-php
+family: language
+product: php
+confidence: 0.85
+provenance: |
+  When PHP runs as an Apache/mod_php or CGI/FPM-visible module the
+  Server header commonly embeds "PHP/<version>" after the server
+  token (documented PHP exposure behavior).  Unanchored inside the
+  header by design; anchors are wrong here because the server token
+  precedes it.
+matches:
+  - field: http.server
+    pattern: 'PHP/(\d+(?:\.\d+)*)'
+    version_group: 1
+    weight: 0.9
+tests:
+  - evidence: {http: {server: "Apache/2.4.41 (Unix) PHP/7.4.12"}}
+    match: true
+    version: "7.4.12"
+  - evidence: {http: {server: "nginx/1.24.0"}}
+    match: false

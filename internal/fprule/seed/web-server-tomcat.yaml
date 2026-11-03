@@ -1,0 +1,21 @@
+# Apache Tomcat — version string in the default page/error page title.
+id: web-server-tomcat
+family: web-server
+product: tomcat
+confidence: 0.7
+provenance: |
+  Tomcat's default ROOT page and error pages (documented default
+  templates) render "<title>Apache Tomcat/<version></title>".  Title
+  tier: weaker evidence than a Server header, hence confidence 0.7.
+matches:
+  - field: http.title
+    pattern: '^Apache Tomcat/(\d+(?:\.\d+)*)'
+    version_group: 1
+tests:
+  - evidence: {http: {title: "Apache Tomcat/10.0.14"}}
+    match: true
+    version: "10.0.14"
+  - evidence: {http: {title: "Welcome to Apache Tomcat Extras"}}
+    match: false
+  - evidence: {http: {server: "Apache-Coyote/1.1"}}
+    match: false

@@ -1,0 +1,7 @@
+# INVALID: unknown top-level key — strict schema rejects.
+profile: client
+
+client:
+  endpoint: "https://gseer.example.com"
+
+unknown_top_level_key: "this is not in the schema"

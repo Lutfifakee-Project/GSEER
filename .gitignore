@@ -1,0 +1,48 @@
+# GSEER .gitignore — M1 (Phase 1, v0.0.1).
+
+# Build artifacts.
+/bin/
+/dist/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+/gseer
+/gseerng
+
+# Go workspace files (local dev only; never commit).
+/go.work
+/go.work.sum
+
+# Environment & secrets — NEVER commit a real .env.
+/.env
+/.env.*
+!/.env.example
+
+# Editor / OS detritus.
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Coverage / profile artifacts.
+coverage.out
+coverage.html
+*.pprof
+
+# Local PostgreSQL data (if an operator runs PG outside Compose).
+/pgdata/
+
+# OS-specific installer staging (release tooling; not in v0.0.1).
+/staging/
+
+# Generated full-stack compose (gseer setup --with-compose --full).
+# The committed docker-compose.yml is the db-only template; the full
+# stack file is generated per deployment and never committed.
+/docker-compose.full.yml

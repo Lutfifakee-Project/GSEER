@@ -1,0 +1,19 @@
+# Django — admin index default title.
+id: framework-django-admin
+family: framework
+product: django
+confidence: 0.6
+provenance: |
+  The Django admin index renders "<title>Site administration |
+  Django site admin</title>" by default (documented Django admin
+  templates).  Weak-signal tier: only the fixed admin-title phrase
+  matches, never a generic "Django" mention.
+matches:
+  - field: http.title
+    pattern: 'Site administration \| Django site admin$'
+    weight: 1.0
+tests:
+  - evidence: {http: {title: "Site administration | Django site admin"}}
+    match: true
+  - evidence: {http: {title: "Getting started with Django"}}
+    match: false

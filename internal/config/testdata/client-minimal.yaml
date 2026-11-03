@@ -1,0 +1,3 @@
+# Minimal client config: profile only, no endpoint.
+# Used to test that switching to self-hosted via CLI applies DB defaults.
+profile: client

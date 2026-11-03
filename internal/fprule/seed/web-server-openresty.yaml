@@ -1,0 +1,21 @@
+# OpenResty — default Server header "openresty/<version>" (replaces
+# the nginx token).
+id: web-server-openresty
+family: web-server
+product: openresty
+confidence: 0.9
+provenance: |
+  OpenResty builds replace nginx's Server token with
+  "openresty/<version>" (documented lua-nginx-module behavior), so
+  this rule and web-server-nginx are mutually exclusive on the same
+  header — each rule's negative tests pin the other.
+matches:
+  - field: http.server
+    pattern: '^openresty/(\d+(?:\.\d+)*)'
+    version_group: 1
+tests:
+  - evidence: {http: {server: "openresty/1.21.4.1"}}
+    match: true
+    version: "1.21.4.1"
+  - evidence: {http: {server: "nginx/1.21.4.1"}}
+    match: false

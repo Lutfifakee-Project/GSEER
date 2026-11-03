@@ -1,0 +1,12 @@
+# INVALID: policy.active.* key — must be rejected with E_CONFIG_POLICY_ACTIVE_REJECTED.
+profile: self-hosted
+
+database:
+  host: "127.0.0.1"
+  port: 5432
+
+policy:
+  evaluation_fixtures: false
+  active:
+    enabled: true
+    ports: [80, 443]

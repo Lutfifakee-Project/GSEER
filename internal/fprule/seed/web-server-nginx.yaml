@@ -1,0 +1,25 @@
+# nginx — default Server header "nginx/<version> (build)".
+id: web-server-nginx
+family: web-server
+product: nginx
+confidence: 0.95
+provenance: |
+  nginx sends "Server: nginx/<version>" by default (nginx docs,
+  http core module server_tokens on).  The pattern anchors at the
+  string start and requires a "/", whitespace, "(" or end after the
+  product so derivatives that keep a different token ("nginx-proxy")
+  do not match.
+matches:
+  - field: http.server
+    pattern: '^nginx(?:/(\d+(?:\.\d+)*))?(\s*\(|$)'
+    version_group: 1
+tests:
+  - evidence: {http: {server: "nginx/1.24.0"}}
+    match: true
+    version: "1.24.0"
+  - evidence: {http: {server: "nginx"}}
+    match: true
+  - evidence: {http: {server: "nginx-proxy/1.0"}}
+    match: false
+  - evidence: {http: {server: "openresty/1.21.4.1"}}
+    match: false

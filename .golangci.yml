@@ -1,0 +1,85 @@
+# GSEER golangci-lint configuration — M1 (Phase 1, v0.0.1).
+# golangci-lint v2 format.  The lint set is conservative for M1 (the
+# foundation milestone); it will be tightened as the codebase grows.
+#
+# AC-1.3 (vet/lint/govulncheck clean) is the M1 gate.
+
+version: "2"
+
+run:
+  timeout: 5m
+  go: "1.26"
+
+linters:
+  default: standard
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gosec
+    - misspell
+    - revive
+    - unconvert
+    - unparam
+    - gocritic
+    - bodyclose
+    - copyloopvar
+    - dupword
+    - gocyclo
+    - nakedret
+    - prealloc
+    - rowserrcheck
+    - sqlclosecheck
+    - whitespace
+
+  settings:
+    gocyclo:
+      min-complexity: 20
+    revive:
+      severity: warning
+      rules:
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: error-naming
+        - name: error-strings
+        - name: error-return
+        - name: errorf
+        - name: exported
+          disabled: true # M1: stub commands don't need full doc comments yet
+        - name: if-return
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: range
+        - name: receiver-naming
+        - name: time-naming
+        - name: var-declaration
+        - name: var-naming
+
+  exclusions:
+    # Test files get more latitude: common test patterns trip default
+    # linters without indicating real bugs.
+    paths:
+      - "_test\\.go"
+    rules:
+      # errcheck: ignore Println/Printf/Print in test code.
+      - linters: [errcheck]
+        text: "Println|Printf|Print"
+        path: "_test\\.go"
+      # gosec G104 (errors unhandled) — acceptable in test boilerplate.
+      - linters: [gosec]
+        text: "G104"
+        path: "_test\\.go"
+      # dupword false-positive: the root command's Long help text lists
+      # `rules list` / `rules validate` and `server start|status|stop`
+      # verbatim per SPEC-03 §2.  These are legitimate command names with
+      # a shared prefix, not duplicate words in prose.
+      - linters: [dupword]
+        path: "internal/cli/root\\.go"
+
+issues:
+  max-same-issues: 0
+  max-issues-per-linter: 0

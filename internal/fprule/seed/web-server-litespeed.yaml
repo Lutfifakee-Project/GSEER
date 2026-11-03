@@ -1,0 +1,21 @@
+# LiteSpeed Web Server — default Server header "LiteSpeed".
+id: web-server-litespeed
+family: web-server
+product: litespeed
+confidence: 0.9
+provenance: |
+  LiteSpeed sends "Server: LiteSpeed" by default (vendor
+  documentation).  Anchored product token; no version is exposed by
+  the header.
+matches:
+  - field: http.server
+    pattern: '^LiteSpeed(?:/([\d.]+))?(?:\s|$)'
+    version_group: 1
+tests:
+  - evidence: {http: {server: "LiteSpeed"}}
+    match: true
+  - evidence: {http: {server: "LiteSpeed/1.7"}}
+    match: true
+    version: "1.7"
+  - evidence: {http: {server: "LiteSpeedcached/1.0"}}
+    match: false

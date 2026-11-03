@@ -1,0 +1,16 @@
+# Varnish Cache — default Server header of the cache.
+id: web-tech-varnish
+family: web-tech
+product: varnish
+confidence: 0.9
+provenance: |
+  Varnish sends "Server: Varnish" when it terminates responses
+  (documented varnish-cache default).  Anchored token.
+matches:
+  - field: http.server
+    pattern: '^Varnish(?:\s|$)'
+tests:
+  - evidence: {http: {server: "Varnish"}}
+    match: true
+  - evidence: {http: {server: "Varnished/1.0"}}
+    match: false

@@ -1,0 +1,18 @@
+# lighttpd — default Server header "lighttpd/<version>".
+id: web-server-lighttpd
+family: web-server
+product: lighttpd
+confidence: 0.95
+provenance: |
+  lighttpd sends "Server: lighttpd/<version>" by default (vendor
+  default server.tag).  Lowercase spelling is the product token.
+matches:
+  - field: http.server
+    pattern: '^lighttpd/(\d+(?:\.\d+)*)'
+    version_group: 1
+tests:
+  - evidence: {http: {server: "lighttpd/1.4.67"}}
+    match: true
+    version: "1.4.67"
+  - evidence: {http: {server: "Lighttpd/1.4.67"}}
+    match: false

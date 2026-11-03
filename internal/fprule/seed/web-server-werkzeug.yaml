@@ -1,0 +1,20 @@
+# Werkzeug dev server — "Server: Werkzeug/<version> Python/<pyver>".
+id: web-server-werkzeug
+family: web-server
+product: werkzeug
+confidence: 0.85
+provenance: |
+  Flask/Werkzeug development servers send
+  "Werkzeug/<version> Python/<pyversion>" (documented werkzeug
+  serving module).  Dev-server tier: production deployments usually
+  front it with a real server.
+matches:
+  - field: http.server
+    pattern: '^Werkzeug/(\d+(?:\.\d+)*)'
+    version_group: 1
+tests:
+  - evidence: {http: {server: "Werkzeug/2.3.7 Python/3.11.4"}}
+    match: true
+    version: "2.3.7"
+  - evidence: {http: {server: "WerkzeugCustom/1.0"}}
+    match: false

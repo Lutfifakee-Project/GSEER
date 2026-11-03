@@ -1,0 +1,29 @@
+# WordPress — documented default page titles.
+id: cms-wordpress
+family: cms
+product: wordpress
+confidence: 0.7
+provenance: |
+  Two WordPress defaults expose the title: the fresh-install site
+  title "Just another WordPress site" and the login page title
+  "Log In ‹ <site> — WordPress" (wp-login.php default; both
+  documented WordPress defaults).  Both patterns are anchored and
+  exact — a blog post ABOUT WordPress does not match.  Weight
+  distinguishes the tiers; generic in-title mentions are not
+  evidence.
+matches:
+  - field: http.title
+    pattern: '^Just another WordPress(\.com)? site$'
+    weight: 0.75
+  - field: http.title
+    pattern: '^Log In ‹'
+    weight: 0.85
+tests:
+  - evidence: {http: {title: "Just another WordPress site"}}
+    match: true
+  - evidence: {http: {title: "Log In ‹ My Blog — WordPress"}}
+    match: true
+  - evidence: {http: {title: "How to speed up WordPress sites"}}
+    match: false
+  - evidence: {http: {title: "WordPress"}}
+    match: false

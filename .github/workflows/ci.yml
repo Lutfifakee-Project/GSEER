@@ -1,0 +1,176 @@
+# GSEER CI — M1 (Phase 1, v0.0.1).
+#
+# AC-1.1: go build ./... under both 1.26.x and 1.27.x.
+# AC-1.2: go vet ./... clean.
+# AC-1.3: golangci-lint run clean.
+# AC-1.4: govulncheck ./... clean.
+# AC-3.1: import-graph test green (no collector/egress deps).
+# AC-5.1 stub: no-phantom-commands test parses help; every listed
+#   command registered (full runnable check lands in M11).
+#
+# The v0.0.1 release gate (Phase 1 plan §4) requires all of the above
+# green on both Go majors before any release tag is created (which itself
+# requires separate owner sign-off, SPEC-03 §4).
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & Test (Go ${{ matrix.go }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        go: ["1.26.x", "1.27.x"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # for commit metadata ldflags
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+
+      - name: Print toolchain
+        run: |
+          go version
+          go env GOMOD GOFLAGS
+
+      - name: go mod download
+        run: go mod download
+
+      - name: Build (AC-1.1)
+        run: make build VERSION=ci COMMIT=$(git rev-parse --short HEAD) BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+      - name: Verify version metadata
+        run: ./bin/gseer version
+
+      - name: Vet (AC-1.2)
+        run: go vet ./...
+
+      - name: Test (incl. AC-3.1 import-graph, AC-5.1 no-phantom stub)
+        run: go test -race ./...
+
+  lint:
+    name: Lint (golangci-lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+          cache: true
+      - name: golangci-lint (AC-1.3)
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout 5m
+
+  vuln:
+    name: Vulnerability scan (govulncheck, AC-1.4)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+          cache: true
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - name: govulncheck (AC-1.4)
+        run: govulncheck ./...
+
+  # The import-graph job is also run as a Go test above, but we surface
+  # it as its own job for visibility (the Search ≠ Scan invariant is the
+  # most important architectural property of v0.0.1).
+  import-graph:
+    name: Search ≠ Scan (AC-3.1)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+          cache: true
+      - name: AC-3.1 import-graph test
+        run: go test -run TestImportGraphSearchNotScan ./internal/cli
+      - name: AC-7.x active-observation absence
+        run: go test -run TestNoCollectorPackageExists ./internal/cli
+
+  # M3: database integration tests against a real PostgreSQL service
+  # (migrations, bounded advisory lock, failure-injection rollback,
+  # force recovery, pool lifecycle).  Runs on PRs touching storage/CLI
+  # and nightly via workflow_dispatch; unit-only push builds above stay
+  # fast (no PG container).
+  integration-test:
+    name: DB integration (PostgreSQL 17)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: gseer
+          POSTGRES_DB: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U gseer"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+          cache: true
+      - name: Integration tests (AC-M3-1..18)
+        env:
+          GSEER_TEST_PG_ADMIN: postgres://gseer@127.0.0.1:5433/postgres?sslmode=disable
+          GSEER_TEST_REQUIRE: "1"
+        run: go test -race -tags integration ./internal/storage/postgres/
+
+  nightly-integration:
+    name: Nightly DB integration (full battery)
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: gseer
+          POSTGRES_DB: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U gseer"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+          cache: true
+      - name: Full integration battery with race detector and coverage
+        env:
+          GSEER_TEST_PG_ADMIN: postgres://gseer@127.0.0.1:5433/postgres?sslmode=disable
+          GSEER_TEST_REQUIRE: "1"
+        run: go test -race -tags integration -cover ./internal/storage/postgres/

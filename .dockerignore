@@ -1,0 +1,13 @@
+# Keep the build context minimal: no test caches, no scratch DBs, no
+# release artifacts inside the image.
+.git
+.github
+bin/
+tmp_smoke/
+*.md
+!README.md
+docker-compose*.yml
+.env
+.golangci.yml
+internal/**/*_test.go
+docs/

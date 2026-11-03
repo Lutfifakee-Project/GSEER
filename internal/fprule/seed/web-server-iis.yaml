@@ -1,0 +1,18 @@
+# Microsoft IIS — default Server header "Microsoft-IIS/<version>".
+id: web-server-iis
+family: web-server
+product: microsoft-iis
+confidence: 0.95
+provenance: |
+  IIS sends "Server: Microsoft-IIS/<major>.<minor>" by default
+  (documented IIS behavior; version maps to Windows release).
+matches:
+  - field: http.server
+    pattern: '^Microsoft-IIS/(\d+(?:\.\d+)*)'
+    version_group: 1
+tests:
+  - evidence: {http: {server: "Microsoft-IIS/10.0"}}
+    match: true
+    version: "10.0"
+  - evidence: {http: {server: "nginx/1.24.0"}}
+    match: false

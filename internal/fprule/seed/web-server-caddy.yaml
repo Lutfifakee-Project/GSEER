@@ -1,0 +1,21 @@
+# Caddy — Server header when present.
+id: web-server-caddy
+family: web-server
+product: caddy
+confidence: 0.8
+provenance: |
+  Caddy 2 does not send a Server header by default; when operators or
+  plugins enable one it is "Server: Caddy".  Confidence reflects the
+  conditional nature (header-is-product tier when present).
+matches:
+  - field: http.server
+    pattern: '^Caddy(?:/([\d.]+))?(?:\s|$)'
+    version_group: 1
+tests:
+  - evidence: {http: {server: "Caddy"}}
+    match: true
+  - evidence: {http: {server: "Caddy/2.7.6"}}
+    match: true
+    version: "2.7.6"
+  - evidence: {http: {server: "Caddywampus"}}
+    match: false

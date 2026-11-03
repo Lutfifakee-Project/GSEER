@@ -1,0 +1,16 @@
+# Vercel — edge platform Server token.
+id: web-tech-vercel
+family: web-tech
+product: vercel
+confidence: 0.9
+provenance: |
+  Responses served by Vercel's edge carry "Server: Vercel"
+  (observed platform behavior).  Anchored token.
+matches:
+  - field: http.server
+    pattern: '^Vercel(?:\s|$)'
+tests:
+  - evidence: {http: {server: "Vercel"}}
+    match: true
+  - evidence: {http: {server: "Vercelistic"}}
+    match: false

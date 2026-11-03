@@ -1,0 +1,40 @@
+# GSEER v0.0.1 docker-compose — db only (QS-2).
+#
+# This file is the canonical db-only compose referenced by the QUICKSTART
+# (SPEC-03 §6 step 1) and written/verified by `gseer setup --with-compose`
+# (M2/M11).  It defines ONLY the `db` service: PostgreSQL 17-alpine, a
+# named volume, a loopback-only port binding, and healthcheck-gated
+# readiness.  No collector, no egress, no public service.
+#
+# `gseer setup --with-compose` regenerates this file with a generated
+# password in `.env` (M2); the structure below is the template.
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${GSEER_DB_USER:-gseer}
+      POSTGRES_PASSWORD: ${GSEER_DB_PASSWORD:?set GSEER_DB_PASSWORD in .env}
+      POSTGRES_DB: ${GSEER_DB_NAME:-gseer}
+      # Tuning for the v0.0.1 Developer Preview workload (single-user
+      # search over a small fixture corpus).  Production tuning is the
+      # operator's responsibility.
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+    ports:
+      # Loopback-only: the database is not reachable from other hosts.
+      # This is the v0.0.1 default; operators who need network exposure
+      # must change it explicitly and accept the responsibility.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - gseer-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${GSEER_DB_USER:-gseer} -d ${GSEER_DB_NAME:-gseer}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  gseer-db-data:
+    name: gseer-db-data

@@ -1,0 +1,17 @@
+# Kestrel — ASP.NET Core's default server, Server header "Kestrel".
+id: web-server-kestrel
+family: web-server
+product: kestrel
+confidence: 0.9
+provenance: |
+  ASP.NET Core apps hosted on Kestrel send "Server: Kestrel" unless
+  suppressed (documented ASP.NET Core hosting behavior).  Anchored
+  token; the framework (ASP.NET Core) is NOT inferred from it.
+matches:
+  - field: http.server
+    pattern: '^Kestrel(?:\s|$)'
+tests:
+  - evidence: {http: {server: "Kestrel"}}
+    match: true
+  - evidence: {http: {server: "KestrelRelay"}}
+    match: false

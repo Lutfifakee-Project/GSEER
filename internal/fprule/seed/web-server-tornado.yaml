@@ -1,0 +1,19 @@
+# Tornado — default Server header "TornadoServer/<version>".
+id: web-server-tornado
+family: web-server
+product: tornado
+confidence: 0.85
+provenance: |
+  Tornado sends "Server: TornadoServer/<version>" by default
+  (documented tornado.httpserver behavior).  Python async framework
+  server.
+matches:
+  - field: http.server
+    pattern: '^TornadoServer/(\d+(?:\.\d+)*)'
+    version_group: 1
+tests:
+  - evidence: {http: {server: "TornadoServer/6.3.2"}}
+    match: true
+    version: "6.3.2"
+  - evidence: {http: {server: "Tornado/6.3.2"}}
+    match: false

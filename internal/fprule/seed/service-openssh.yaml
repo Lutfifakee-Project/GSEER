@@ -1,0 +1,23 @@
+# OpenSSH — SSH protocol version banner.
+id: service-openssh
+family: service
+product: openssh
+confidence: 0.95
+provenance: |
+  RFC 4253 §4.2 defines the server banner "SSH-protoversion-
+  softwareversion"; OpenSSH sends "SSH-2.0-OpenSSH_<version>"
+  (documented OpenSSH behavior).  The fixture corpus o3 carries this
+  exact banner shape as ssh.banner evidence.
+matches:
+  - field: ssh.banner
+    pattern: '^SSH-\d(?:\.\d+)?-OpenSSH[_/](\d+(?:\.\d+)*(?:p\d+)?)'
+    version_group: 1
+tests:
+  - evidence: {ssh: {banner: "SSH-2.0-OpenSSH_9.6"}}
+    match: true
+    version: "9.6"
+  - evidence: {ssh: {banner: "SSH-2.0-OpenSSH_9.6p1 Ubuntu-3ubuntu13"}}
+    match: true
+    version: "9.6p1"
+  - evidence: {ssh: {banner: "SSH-2.0-dropbear_2022.83"}}
+    match: false

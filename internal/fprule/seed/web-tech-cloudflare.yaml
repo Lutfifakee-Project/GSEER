@@ -1,0 +1,16 @@
+# Cloudflare — edge proxy Server token.
+id: web-tech-cloudflare
+family: web-tech
+product: cloudflare
+confidence: 0.95
+provenance: |
+  Responses served through Cloudflare carry "Server: cloudflare"
+  (documented Cloudflare behavior).  Lowercase exact token.
+matches:
+  - field: http.server
+    pattern: '^cloudflare(?:\s|$)'
+tests:
+  - evidence: {http: {server: "cloudflare"}}
+    match: true
+  - evidence: {http: {server: "cloudflare-custom"}}
+    match: false

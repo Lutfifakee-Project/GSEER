@@ -1,0 +1,8 @@
+# Valid client config for M2 tests.
+profile: client
+
+client:
+  endpoint: "https://gseer.example.com"
+
+log:
+  level: "info"

@@ -1,0 +1,24 @@
+# Apache httpd — default Server header "Apache/<version> (OS)".
+id: web-server-apache
+family: web-server
+product: apache-httpd
+confidence: 0.95
+provenance: |
+  Apache httpd sends "Server: Apache/<version>" by default
+  (core directive ServerTokens Full).  Anchored, with a non-word
+  boundary so "Apache-Coyote/1.1" (Tomcat's JK connector) and
+  "Apache Tomcat" do not match this rule.
+matches:
+  - field: http.server
+    pattern: '^Apache(?:/(\d+(?:\.\d+)*))?(?:\s*\(|$)'
+    version_group: 1
+tests:
+  - evidence: {http: {server: "Apache/2.4.41 (Unix)"}}
+    match: true
+    version: "2.4.41"
+  - evidence: {http: {server: "Apache"}}
+    match: true
+  - evidence: {http: {server: "Apache-Coyote/1.1"}}
+    match: false
+  - evidence: {http: {server: "Apache Tomcat/10.0.14"}}
+    match: false

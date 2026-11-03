@@ -1,0 +1,19 @@
+# Eclipse Jetty — default Server header "Jetty(<version>)".
+id: web-server-jetty
+family: web-server
+product: jetty
+confidence: 0.9
+provenance: |
+  Jetty sends "Server: Jetty(<version>.v<build>)" by default
+  (HttpConnectionFactory serverVersion).  The capture takes the
+  parenthesized version.
+matches:
+  - field: http.server
+    pattern: '^Jetty\((\d+\.\d+\.\d+[^\)]*)\)'
+    version_group: 1
+tests:
+  - evidence: {http: {server: "Jetty(9.4.44.v20210927)"}}
+    match: true
+    version: "9.4.44.v20210927"
+  - evidence: {http: {server: "Jetty"}}
+    match: false

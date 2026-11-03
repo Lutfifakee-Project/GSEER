@@ -1,0 +1,26 @@
+{
+  "observed_at": "2026-01-15T00:00:00Z",
+  "assets": [
+    {"ref": "A", "kind": "ip", "value": "203.0.113.10", "ip": "203.0.113.10", "asn": 64500, "asn_org": "AS64500 FIXTURE-VANNET", "geo_country": "US"},
+    {"ref": "B", "kind": "ip", "value": "203.0.113.11", "ip": "203.0.113.11", "asn": 64500, "asn_org": "AS64500 FIXTURE-VANNET", "geo_country": "US"},
+    {"ref": "C", "kind": "ip", "value": "203.0.113.12", "ip": "203.0.113.12", "asn": 64512, "asn_org": "AS64512 FIXTURE-DENET", "geo_country": "DE"},
+    {"ref": "D", "kind": "domain", "value": "portal.example.net", "domain": "portal.example.net", "geo_country": "US"}
+  ],
+  "services": [
+    {"ref": "s1", "asset": "A", "port": 443, "transport": "tcp", "protocol": "https", "name": "https"},
+    {"ref": "s2", "asset": "A", "port": 80, "transport": "tcp", "protocol": "http", "name": "http"},
+    {"ref": "s3", "asset": "A", "port": 22, "transport": "tcp", "protocol": "ssh", "name": "ssh", "product": "OpenSSH", "version": "9.6"},
+    {"ref": "s4", "asset": "B", "port": 8443, "transport": "tcp", "protocol": "https", "name": "https"},
+    {"ref": "s5", "asset": "C", "port": 443, "transport": "tcp", "protocol": "http", "name": "http"},
+    {"ref": "s6", "asset": "C", "port": 8443, "transport": "tcp", "protocol": "https", "name": "https"}
+  ],
+  "observations": [
+    {"ref": "o1", "asset": "A", "service": "s1", "source_cursor": "fixture://203.0.113.10:443/https", "evidence": {"http": {"status": 200, "title": "Admin Login"}, "tls": {"version": "TLSv1.3", "cert_subject_cn": "a.example.com", "cert_issuer_cn": "GSEER Fixture CA", "cert_expiry": "2027-01-01T00:00:00Z"}}},
+    {"ref": "o2", "asset": "A", "service": "s2", "source_cursor": "fixture://203.0.113.10:80/http", "evidence": {"http": {"status": 301, "title": "Redirecting"}}},
+    {"ref": "o3", "asset": "A", "service": "s3", "source_cursor": "fixture://203.0.113.10:22/ssh", "evidence": {"ssh": {"banner": "SSH-2.0-OpenSSH_9.6"}}},
+    {"ref": "o4", "asset": "B", "service": "s4", "source_cursor": "fixture://203.0.113.11:8443/https", "evidence": {"http": {"status": 200, "title": "Admin Login"}}},
+    {"ref": "o5", "asset": "C", "service": "s5", "source_cursor": "fixture://203.0.113.12:443/http", "evidence": {"http": {"status": 200, "title": "Portal"}}},
+    {"ref": "o6", "asset": "C", "service": "s6", "source_cursor": "fixture://203.0.113.12:8443/https", "evidence": {"http": {"status": 200, "title": "Admin Login"}}},
+    {"ref": "o7", "asset": "D", "service": null, "source_cursor": "fixture://portal.example.net/ct", "evidence": {"ct": {"leaf_cert_subject": "portal.example.net"}}}
+  ]
+}

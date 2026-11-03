@@ -1,0 +1,9 @@
+# INVALID: InsecureSkipVerify — unsafe key rejected.
+profile: self-hosted
+
+database:
+  host: "127.0.0.1"
+  port: 5432
+
+server:
+  insecure_skip_verify: true
