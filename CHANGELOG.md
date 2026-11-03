@@ -88,9 +88,10 @@ evidence).  No breaking changes to the v0.0.2 surface.
   pinned to **v2.15.0** (Go 1.26).  The existing v2 lint configuration
   is preserved; obsolete v0.0.1/M1 workflow comments were refreshed.
   The nightly full-DB battery is now genuinely nightly: a `schedule`
-  trigger (`0 18 * * *` = 01:00 Asia/Jakarta) was added and the job
-  runs on `workflow_dispatch` or `schedule` — never on ordinary pushes
-  (the fast integration-test job still runs on every push).  The
+  trigger (`0 18 * * *` = 01:00 Asia/Jakarta) and a `workflow_dispatch`
+  trigger were added — the job runs on schedule and on manual dispatch,
+  never on ordinary pushes (the fast integration-test job still runs
+  on every push).  The
   `update-windows` job runs the full unit suite, vet and build on
   windows-latest in addition to the updater suite and its race.
 - **Lint**: the codebase is clean under golangci-lint v2.15.0 with the
@@ -131,7 +132,13 @@ evidence).  No breaking changes to the v0.0.2 surface.
   `MoveFileExW`, replace with/without an existing target, API errors,
   rollback, warning propagation, platform-honest permission semantics
   via `assertPerm`, leak-free injected-close stubs) runs on the
-  `update-windows` CI job (windows-latest, Go 1.27.x).
+  `update-windows` CI job (windows-latest, Go 1.27.x).  Every
+  permission assertion in the updater suite — `apply_test.go`,
+  `apply_windows_test.go` and the full-chain `TestApplyFullChain` in
+  `update_test.go` included — goes through `assertPerm`: exact POSIX
+  bits on Unix, writable/read-only semantics only on Windows (no
+  exact-mode claim is made there, and no assertion was weakened or
+  removed).
 
 ## [v0.0.2] — Passive Intelligence (Phase 2)
 

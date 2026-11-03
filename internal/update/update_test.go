@@ -198,11 +198,9 @@ func TestApplyFullChain(t *testing.T) {
 	if err != nil || string(bak) != "old-binary" {
 		t.Fatalf("backup content wrong: %q (%v)", bak, err)
 	}
-	// Mode preserved (0o755).
-	st, _ := os.Stat(target)
-	if st.Mode().Perm() != 0o755 {
-		t.Errorf("mode = %v, want 0755", st.Mode().Perm())
-	}
+	// Mode preserved (0o755; writable/read-only semantics on Windows —
+	// see assertPerm).
+	assertPerm(t, target, 0o755)
 }
 
 func TestApplyRefusesDowngradeAndSameVersion(t *testing.T) {

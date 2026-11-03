@@ -22,6 +22,10 @@ on:
   schedule:
     # Nightly full DB battery: 18:00 UTC = 01:00 Asia/Jakarta (UTC+7).
     - cron: "0 18 * * *"
+  workflow_dispatch:
+    # Manual dispatch — the only way to run the nightly full DB battery
+    # on demand (nightly-integration's job condition gates on this
+    # event or on `schedule` above; ordinary pushes never run it).
 
 permissions:
   contents: read
