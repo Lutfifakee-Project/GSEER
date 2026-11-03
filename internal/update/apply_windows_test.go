@@ -61,7 +61,10 @@ func TestWindowsReplacePassesWriteThroughFlags(t *testing.T) {
 	orig := moveFileEx
 	moveFileEx = func(from, to *uint16, flags uint32) error {
 		gotFlags, gotFrom, gotTo = flags, utf16PtrToString(from), utf16PtrToString(to)
-		// Perform the real move so the rest of replaceBinary runs honestly.
+		// Perform the real move so the rest of replaceBinary runs
+		// honestly; remove the target first because this seam moves via
+		// os.Rename (MoveFileW) instead of the replacing API.
+		_ = os.Remove(utf16PtrToString(to))
 		return os.Rename(utf16PtrToString(from), utf16PtrToString(to))
 	}
 	t.Cleanup(func() { moveFileEx = orig })
@@ -102,9 +105,7 @@ func TestWindowsReplaceWithExistingTarget(t *testing.T) {
 	if bak, rerr := os.ReadFile(target + ".bak"); rerr != nil || string(bak) != "old-binary" {
 		t.Fatalf("backup = %q (%v), want the old binary", bak, rerr)
 	}
-	if st, _ := os.Stat(target); st.Mode().Perm() != 0o751 {
-		t.Errorf("target mode = %v, want 0751", st.Mode().Perm())
-	}
+	assertPerm(t, target, 0o751)
 	assertNoTempFiles(t, dir)
 }
 

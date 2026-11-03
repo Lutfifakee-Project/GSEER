@@ -87,6 +87,12 @@ evidence).  No breaking changes to the v0.0.2 surface.
   `golangci/golangci-lint-action@v9.3.0` (node24) with golangci-lint
   pinned to **v2.15.0** (Go 1.26).  The existing v2 lint configuration
   is preserved; obsolete v0.0.1/M1 workflow comments were refreshed.
+  The nightly full-DB battery is now genuinely nightly: a `schedule`
+  trigger (`0 18 * * *` = 01:00 Asia/Jakarta) was added and the job
+  runs on `workflow_dispatch` or `schedule` — never on ordinary pushes
+  (the fast integration-test job still runs on every push).  The
+  `update-windows` job runs the full unit suite, vet and build on
+  windows-latest in addition to the updater suite and its race.
 - **Lint**: the codebase is clean under golangci-lint v2.15.0 with the
   existing rule set (no rules weakened; the only new exclusion is a
   documented, narrowly-scoped G101 exemption for the compose generator's
@@ -118,9 +124,13 @@ evidence).  No breaking changes to the v0.0.2 surface.
   copy failure / sync failure / close failure and their precedence,
   backup permission preservation, atomic replacement, no-temp-leftover
   cleanup, rollback (incl. failed-rollback reporting) and the
-  dir-sync warning contract.  Windows-specific coverage (flags passed
-  to `MoveFileExW`, replace with/without an existing target, API
-  errors, rollback, warning propagation) runs on the new
+  dir-sync warning contract.  Every `*Error` now carries its wrapped
+  cause (`Unwrap`) — `errors.Is` / `errors.As` walk the live chain
+  (MoveFileExW error → `*os.LinkError` → `*Error`) instead of a
+  flattened string.  Windows-specific coverage (flags passed to
+  `MoveFileExW`, replace with/without an existing target, API errors,
+  rollback, warning propagation, platform-honest permission semantics
+  via `assertPerm`, leak-free injected-close stubs) runs on the
   `update-windows` CI job (windows-latest, Go 1.27.x).
 
 ## [v0.0.2] — Passive Intelligence (Phase 2)

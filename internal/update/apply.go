@@ -32,11 +32,16 @@ import (
 // apply.go — download + verify + atomic replace + rollback.
 
 // Error is the update system's structured error (what → why → next).
+// Err carries the wrapped underlying cause: Why renders it for humans
+// while Err keeps it machine-inspectable — errors.Is / errors.As walk
+// the live chain (e.g. MoveFileExW error → *os.LinkError → *Error) and
+// the cause is never flattened to a string alone.
 type Error struct {
 	Code string
 	What string
 	Why  string
 	Next string
+	Err  error
 }
 
 func (e *Error) Error() string {
@@ -49,6 +54,10 @@ func (e *Error) Error() string {
 	}
 	return out
 }
+
+// Unwrap exposes the wrapped cause so errors.Is / errors.As can reach
+// it through every layer of the replacement chain.
+func (e *Error) Unwrap() error { return e.Err }
 
 // MaxArtifactBytes caps an update payload (a GSEER binary is tens of
 // MB; 512 MiB is generous and refuses memory-bomb URLs).
@@ -156,6 +165,7 @@ func Apply(ctx context.Context, manifestBytes []byte, pub []byte, currentVersion
 			What: "cannot compare versions",
 			Why:  err.Error(),
 			Next: "refusing to apply an update of unknown relation to the running build",
+			Err:  err,
 		}
 	}
 	if cmp >= 0 && !force {
@@ -217,7 +227,7 @@ func replaceBinary(target string, payload []byte) (err error) {
 		return &Error{Code: "E_UPDATE_TARGET", What: "the update target is a directory", Why: target}
 	}
 	if derr := os.MkdirAll(dir, 0o750); derr != nil {
-		return &Error{Code: "E_UPDATE_TARGET", What: "cannot create the target directory", Why: derr.Error()}
+		return &Error{Code: "E_UPDATE_TARGET", What: "cannot create the target directory", Why: derr.Error(), Err: derr}
 	}
 
 	mode := os.FileMode(0o755)
@@ -228,7 +238,7 @@ func replaceBinary(target string, payload []byte) (err error) {
 	backup := target + ".bak"
 	tmp, terr := os.CreateTemp(dir, ".gseer-update-*")
 	if terr != nil {
-		return &Error{Code: "E_UPDATE_TEMP", What: "cannot create the temp file next to the target", Why: terr.Error()}
+		return &Error{Code: "E_UPDATE_TEMP", What: "cannot create the temp file next to the target", Why: terr.Error(), Err: terr}
 	}
 	tmpName := tmp.Name()
 	defer func() {
@@ -238,17 +248,17 @@ func replaceBinary(target string, payload []byte) (err error) {
 
 	if _, werr := tmp.Write(payload); werr != nil {
 		_ = tmp.Close()
-		return &Error{Code: "E_UPDATE_TEMP", What: "writing the payload failed", Why: werr.Error()}
+		return &Error{Code: "E_UPDATE_TEMP", What: "writing the payload failed", Why: werr.Error(), Err: werr}
 	}
 	if serr := tmp.Sync(); serr != nil {
 		_ = tmp.Close()
-		return &Error{Code: "E_UPDATE_TEMP", What: "fsync failed", Why: serr.Error()}
+		return &Error{Code: "E_UPDATE_TEMP", What: "fsync failed", Why: serr.Error(), Err: serr}
 	}
 	if cerr := tmp.Close(); cerr != nil {
-		return &Error{Code: "E_UPDATE_TEMP", What: "closing the temp file failed", Why: cerr.Error()}
+		return &Error{Code: "E_UPDATE_TEMP", What: "closing the temp file failed", Why: cerr.Error(), Err: cerr}
 	}
 	if perr := os.Chmod(tmpName, mode); perr != nil {
-		return &Error{Code: "E_UPDATE_TEMP", What: "cannot set the binary mode", Why: perr.Error()}
+		return &Error{Code: "E_UPDATE_TEMP", What: "cannot set the binary mode", Why: perr.Error(), Err: perr}
 	}
 
 	// Keep the running binary for rollback.  copyFile reports success
@@ -259,7 +269,7 @@ func replaceBinary(target string, payload []byte) (err error) {
 		// Copy the CURRENT file to .bak (rename would move it away while
 		// the running process maps it — copying is safe everywhere).
 		if cerr := copyFile(target, backup); cerr != nil {
-			return &Error{Code: "E_UPDATE_BACKUP", What: "cannot back up the current binary", Why: cerr.Error()}
+			return &Error{Code: "E_UPDATE_BACKUP", What: "cannot back up the current binary", Why: cerr.Error(), Err: cerr}
 		}
 		hadBackup = true
 	}
@@ -271,11 +281,11 @@ func replaceBinary(target string, payload []byte) (err error) {
 		if hadBackup {
 			if rerr2 := copyFile(backup, target); rerr2 != nil {
 				return errors.Join(
-					&Error{Code: "E_UPDATE_REPLACE", What: "rename failed AND rollback failed", Why: rerr.Error() + "; rollback: " + rerr2.Error(), Next: "restore " + backup + " manually"},
+					&Error{Code: "E_UPDATE_REPLACE", What: "rename failed AND rollback failed", Why: rerr.Error() + "; rollback: " + rerr2.Error(), Next: "restore " + backup + " manually", Err: rerr},
 					rerr)
 			}
 		}
-		return &Error{Code: "E_UPDATE_REPLACE", What: "atomic rename failed", Why: rerr.Error()}
+		return &Error{Code: "E_UPDATE_REPLACE", What: "atomic rename failed", Why: rerr.Error(), Err: rerr}
 	}
 	// Re-sync the directory entry so the rename survives a crash.  The
 	// rename has ALREADY succeeded here: if the sync fails the binary is
@@ -286,6 +296,7 @@ func replaceBinary(target string, payload []byte) (err error) {
 			What: "the binary was replaced, but flushing the directory entry to disk failed",
 			Why:  serr.Error(),
 			Next: "the replacement stands (nothing was rolled back); after a crash or power loss the previous binary may reappear — re-run the update to make it durable",
+			Err:  serr,
 		}
 	}
 	return nil
@@ -370,7 +381,7 @@ func Check(manifestBytes []byte, pub []byte, currentVersion string) (*Manifest, 
 	}
 	cmp, err := CompareVersions(currentVersion, manifest.Version)
 	if err != nil {
-		return nil, &Error{Code: "E_UPDATE_VERSION", What: "cannot compare versions", Why: err.Error()}
+		return nil, &Error{Code: "E_UPDATE_VERSION", What: "cannot compare versions", Why: err.Error(), Err: err}
 	}
 	if cmp >= 0 {
 		return manifest, &Error{

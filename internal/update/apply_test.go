@@ -21,6 +21,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -45,6 +46,35 @@ func writeFileMode(t *testing.T, path, content string, mode os.FileMode) {
 	// chmod makes the mode exact even when the file already existed.
 	if err := os.Chmod(path, mode); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// assertPerm checks path's permission bits with platform-honest
+// expectations.  On Unix the updater must preserve the exact POSIX
+// mode.  On Windows os.Chmod can only toggle the single owner-write
+// bit (mapped to the read-only attribute — Go reports 0666 for a
+// writable file and 0444 for a read-only one); full POSIX modes are
+// not representable there, so the Windows check verifies exactly
+// that semantic and nothing more: a requested mode WITH owner-write
+// must end up writable, a mode WITHOUT it must end up read-only.
+// The Unix contract stays exact; the Windows limitation is
+// documented, not silently ignored.
+func assertPerm(t *testing.T, path string, want os.FileMode) {
+	t.Helper()
+	st, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS == "windows" {
+		wantWritable := want&0o200 != 0
+		gotWritable := st.Mode().Perm()&0o200 != 0
+		if gotWritable != wantWritable {
+			t.Errorf("%s: writable = %v (perm %v), want writable = %v (requested %v) — Windows preserves only the read-only bit", path, gotWritable, st.Mode().Perm(), wantWritable, want)
+		}
+		return
+	}
+	if st.Mode().Perm() != want {
+		t.Errorf("%s: mode = %v, want %v", path, st.Mode().Perm(), want)
 	}
 }
 
@@ -75,9 +105,7 @@ func TestCopyFileSuccessAndModePreservation(t *testing.T) {
 	if got, err := os.ReadFile(dst); err != nil || string(got) != "binary-bytes" {
 		t.Fatalf("dst content = %q (%v), want the payload", got, err)
 	}
-	if st, _ := os.Stat(dst); st.Mode().Perm() != 0o776 {
-		t.Errorf("dst mode = %v, want 0776 (source mode preserved)", st.Mode().Perm())
-	}
+	assertPerm(t, dst, 0o776)
 
 	// Re-copy over an existing destination with a stale mode: the source
 	// mode must win (the re-backup-over-old-.bak path).
@@ -86,9 +114,7 @@ func TestCopyFileSuccessAndModePreservation(t *testing.T) {
 	if err := copyFile(src, dst); err != nil {
 		t.Fatalf("re-copy: %v", err)
 	}
-	if st, _ := os.Stat(dst); st.Mode().Perm() != 0o755 {
-		t.Errorf("re-copied dst mode = %v, want 0755", st.Mode().Perm())
-	}
+	assertPerm(t, dst, 0o755)
 }
 
 func TestCopyFileCopyFailure(t *testing.T) {
@@ -106,8 +132,16 @@ func TestCopyFileCopyFailure(t *testing.T) {
 	}
 
 	// A cleanup (Close) error must never overwrite the copy error.
+	// The stub still REALLY closes the handle before reporting the
+	// injected failure — a leaked handle would make t.TempDir cleanup
+	// fail on Windows ("file in use by another process").
 	origClose := closeFile
-	closeFile = func(*os.File) error { return errors.New("injected close failure") }
+	closeFile = func(f *os.File) error {
+		if rerr := f.Close(); rerr != nil {
+			t.Logf("real close error (superseded by the injected one): %v", rerr)
+		}
+		return errors.New("injected close failure")
+	}
 	t.Cleanup(func() { closeFile = origClose })
 
 	err := copyFile(src, dst)
@@ -139,8 +173,14 @@ func TestCopyFileSyncFailure(t *testing.T) {
 	}
 
 	// A sync failure still takes precedence over a later Close failure.
+	// The stub really closes the handle first (no leaked handles).
 	origClose := closeFile
-	closeFile = func(*os.File) error { return errors.New("injected close failure") }
+	closeFile = func(f *os.File) error {
+		if rerr := f.Close(); rerr != nil {
+			t.Logf("real close error (superseded by the injected one): %v", rerr)
+		}
+		return errors.New("injected close failure")
+	}
 	t.Cleanup(func() { closeFile = origClose })
 	if err := copyFile(src, dst); err != injected {
 		t.Fatalf("sync error masked by close error: %v", err)
@@ -157,8 +197,13 @@ func TestCopyFileCloseFailure(t *testing.T) {
 	t.Cleanup(func() { closeFile = origClose })
 
 	// Output close failure surfaces when no earlier error occurred.
+	// The injected failure is reported AFTER the handle is really
+	// released (t.TempDir cleanup must succeed on Windows).
 	closeFile = func(f *os.File) error {
 		if f.Name() == filepath.Join(dir, "dst") {
+			if rerr := f.Close(); rerr != nil {
+				t.Logf("real close error (superseded by the injected one): %v", rerr)
+			}
 			return injected
 		}
 		return f.Close()
@@ -170,6 +215,9 @@ func TestCopyFileCloseFailure(t *testing.T) {
 	// Input close failure also surfaces when nothing earlier failed.
 	closeFile = func(f *os.File) error {
 		if f.Name() == src {
+			if rerr := f.Close(); rerr != nil {
+				t.Logf("real close error (superseded by the injected one): %v", rerr)
+			}
 			return injected
 		}
 		return f.Close()
@@ -194,12 +242,8 @@ func TestReplaceBinaryAtomicReplaceAndBackup(t *testing.T) {
 		t.Fatalf("backup content = %q (%v), want the old binary", bak, err)
 	}
 	// Mode preserved on BOTH the replaced binary and its backup.
-	if st, _ := os.Stat(target); st.Mode().Perm() != 0o751 {
-		t.Errorf("target mode = %v, want 0751", st.Mode().Perm())
-	}
-	if sb, _ := os.Stat(target + ".bak"); sb.Mode().Perm() != 0o751 {
-		t.Errorf("backup mode = %v, want 0751 (permission preservation)", sb.Mode().Perm())
-	}
+	assertPerm(t, target, 0o751)
+	assertPerm(t, target+".bak", 0o751)
 	assertNoTempFiles(t, dir)
 }
 
@@ -213,9 +257,7 @@ func TestReplaceBinaryNoPriorFile(t *testing.T) {
 	if _, err := os.Stat(target + ".bak"); !os.IsNotExist(err) {
 		t.Errorf("no backup should exist without a prior binary: %v", err)
 	}
-	if st, _ := os.Stat(target); st.Mode().Perm() != 0o755 {
-		t.Errorf("fresh binary mode = %v, want the default 0755", st.Mode().Perm())
-	}
+	assertPerm(t, target, 0o755)
 	assertNoTempFiles(t, dir)
 }
 
@@ -235,6 +277,12 @@ func TestReplaceBinaryRollbackOnRenameFailure(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "injected rename failure") {
 		t.Errorf("underlying rename error not surfaced: %v", err)
+	}
+	// The live error chain: errors.Is reaches the injected cause
+	// through *Error.Unwrap (the same chain errors.As walks for
+	// *os.LinkError on Windows).
+	if !errors.Is(err, injected) {
+		t.Errorf("underlying rename error not chainable via errors.Is: %v", err)
 	}
 	// The original binary was restored from the backup, and the backup
 	// itself survived for a later manual recovery.

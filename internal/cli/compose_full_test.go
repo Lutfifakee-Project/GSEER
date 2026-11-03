@@ -19,6 +19,7 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -130,7 +131,16 @@ func TestSetupWithComposeFull(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if st.Mode().Perm() != 0o600 {
+	// 0600 is the POSIX contract.  On Windows os.Chmod can only map
+	// the single owner-write bit to the read-only attribute (Go
+	// reports 0666 for writable files), so the honest Windows check
+	// is "exists and writable"; full POSIX mode preservation is a
+	// Unix property and is not claimed on Windows.
+	if runtime.GOOS == "windows" {
+		if st.Mode().Perm()&0o200 == 0 {
+			t.Errorf(".env unexpectedly read-only on Windows: %v", st.Mode().Perm())
+		}
+	} else if st.Mode().Perm() != 0o600 {
 		t.Errorf(".env mode = %v, want 0600", st.Mode().Perm())
 	}
 	// The generated token is not a placeholder.
