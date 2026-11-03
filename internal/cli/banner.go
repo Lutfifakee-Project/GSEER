@@ -26,8 +26,8 @@ import (
 )
 
 // bannerTemplate is the GSEER ASCII banner.  The final %s is replaced by
-// the dynamic version string (v-prefixed).  Trailing backslashes on the
-// first four lines are literal (raw string, no escape processing).
+// the dynamic version string (v-prefixed).  Backslashes in the ASCII art
+// are literal because this is a raw string.
 const bannerTemplate = `
    ___________ ________________ 
   / ____/ ___// ____/ ____/ __ \
@@ -53,12 +53,13 @@ func bannerVersion() string {
 }
 
 // printBanner renders the GSEER ASCII banner to w.  When the quiet flag
-// is set, nothing is printed.
-func printBanner(w io.Writer) {
+// is set, nothing is printed.  Returns any write error from the writer.
+func printBanner(w io.Writer) error {
 	if flags.quiet {
-		return
+		return nil
 	}
-	fmt.Fprintf(w, "%s\n", fmt.Sprintf(bannerTemplate, bannerVersion()))
+	_, err := fmt.Fprintf(w, "%s\n", fmt.Sprintf(bannerTemplate, bannerVersion()))
+	return err
 }
 
 // bannerHelpFunc wraps RootCmd's help rendering so the ASCII banner is
@@ -77,7 +78,9 @@ func printBanner(w io.Writer) {
 // cobra's default help rendering, then restore it.
 func bannerHelpFunc(cmd *cobra.Command, args []string) {
 	if !cmd.HasParent() {
-		printBanner(cmd.OutOrStdout())
+		if err := printBanner(cmd.OutOrStdout()); err != nil {
+			cmd.PrintErrln(err)
+		}
 	}
 	// Walk up to RootCmd.
 	root := cmd
@@ -87,5 +90,7 @@ func bannerHelpFunc(cmd *cobra.Command, args []string) {
 	origRootHelp := root.HelpFunc()
 	root.SetHelpFunc(nil)
 	defer root.SetHelpFunc(origRootHelp)
-	cmd.Help()
+	if err := cmd.Help(); err != nil {
+		cmd.PrintErrln(err)
+	}
 }

@@ -18,11 +18,13 @@ package cli
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"strings"
 	"testing"
 
 	"github.com/Lutfifakee-Project/GSEER/internal/version"
+	"github.com/spf13/cobra"
 )
 
 // canonicalBannerLines is the Boss-specified canonical ASCII banner, split
@@ -114,7 +116,9 @@ func TestBannerRenderedOutput(t *testing.T) {
 	version.Version = "v0.1.0"
 
 	buf := &bytes.Buffer{}
-	printBanner(buf)
+	if err := printBanner(buf); err != nil {
+		t.Fatalf("printBanner returned error: %v", err)
+	}
 	out := buf.String()
 
 	// Every canonical line must appear.
@@ -132,6 +136,89 @@ func TestBannerRenderedOutput(t *testing.T) {
 	// No double "vv" prefix anywhere.
 	if strings.Contains(out, "vv0") {
 		t.Errorf("rendered banner contains double 'v' prefix:\n%s", out)
+	}
+}
+
+// sentinelWriter is an io.Writer that always fails with sentinelErr.
+type sentinelWriter struct{}
+
+func (sentinelWriter) Write([]byte) (int, error) {
+	return 0, sentinelErr
+}
+
+var sentinelErr = errors.New("sentinel write error")
+
+// failingOnceWriter fails on the first Write with sentinelErr, then writes
+// all subsequent bytes to the inner buffer.
+type failingOnceWriter struct {
+	inner *bytes.Buffer
+	failed bool
+}
+
+func (w *failingOnceWriter) Write(p []byte) (int, error) {
+	if !w.failed {
+		w.failed = true
+		return 0, sentinelErr
+	}
+	return w.inner.Write(p)
+}
+
+// TestPrintBannerReturnsWriterError verifies that printBanner propagates
+// writer errors and that quiet mode suppresses output without error.
+func TestPrintBannerReturnsWriterError(t *testing.T) {
+	orig := flags.quiet
+	defer func() { flags.quiet = orig }()
+
+	// Non-quiet mode: writer error must propagate.
+	flags.quiet = false
+	if err := printBanner(sentinelWriter{}); err != sentinelErr {
+		t.Errorf("printBanner() = %v, want %q", err, sentinelErr)
+	}
+
+	// Quiet mode: no output, no error.
+	flags.quiet = true
+	if err := printBanner(sentinelWriter{}); err != nil {
+		t.Errorf("quiet mode printBanner should return nil, got: %v", err)
+	}
+}
+
+// TestBannerHelpFuncReportsBannerWriteError verifies that bannerHelpFunc
+// reports banner write errors to the command's error output while still
+// rendering help.
+func TestBannerHelpFuncReportsBannerWriteError(t *testing.T) {
+	outBuf := &bytes.Buffer{}
+	failingWriter := &failingOnceWriter{inner: outBuf}
+	errBuf := &bytes.Buffer{}
+
+	cmd := &cobra.Command{
+		Use:   "test-cmd",
+		Short: "test command",
+	}
+	cmd.SetOut(failingWriter)
+	cmd.SetErr(errBuf)
+	cmd.SetArgs([]string{})
+	defer cmd.SetArgs(nil)
+
+	orig := flags.quiet
+	defer func() { flags.quiet = orig }()
+	flags.quiet = false
+
+	// BannerHelpFunc must be set directly on cmd so that cmd.Help() invokes
+	// it (cobra only walks up the parent chain when helpFunc is nil).
+	cmd.SetHelpFunc(bannerHelpFunc)
+
+	if err := cmd.Help(); err != nil {
+		t.Errorf("cmd.Help() returned error: %v", err)
+	}
+
+	// Banner write error must be reported to stderr.
+	if !strings.Contains(errBuf.String(), sentinelErr.Error()) {
+		t.Errorf("stderr should contain sentinel error, got: %q", errBuf.String())
+	}
+
+	// Help text must still be rendered to stdout despite the banner write failure.
+	if !strings.Contains(outBuf.String(), "test command") {
+		t.Errorf("stdout should contain command help, got: %q", outBuf.String())
 	}
 }
 
@@ -200,7 +287,9 @@ func TestQuietModeNoBanner(t *testing.T) {
 	flags.quiet = true
 
 	buf := &bytes.Buffer{}
-	printBanner(buf)
+	if err := printBanner(buf); err != nil {
+		t.Fatalf("printBanner returned error: %v", err)
+	}
 	out := buf.String()
 
 	if out != "" {
