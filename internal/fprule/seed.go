@@ -19,7 +19,7 @@ package fprule
 import (
 	"embed"
 	"fmt"
-	"path/filepath"
+	"path"
 	"sort"
 	"strings"
 )
@@ -53,7 +53,7 @@ func LoadSeed() ([]*Rule, []Problem, error) {
 	rules := make([]*Rule, 0, len(names))
 	var problems []Problem
 	for _, name := range names {
-		data, err := seedFS.ReadFile(filepath.Join("seed", name))
+		data, err := seedFS.ReadFile(path.Join("seed", name))
 		if err != nil {
 			return rules, problems, err
 		}

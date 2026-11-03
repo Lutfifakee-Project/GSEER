@@ -177,6 +177,9 @@ func TestForceNotCallableFromOtherCommands(t *testing.T) {
 		if rerr != nil {
 			return rerr
 		}
+		// Normalize separators so the allowlist (slash-separated) matches
+		// on every OS (Windows yields backslash paths from filepath.Rel).
+		rel = filepath.ToSlash(rel)
 		data, rerr := os.ReadFile(path)
 		if rerr != nil {
 			return rerr

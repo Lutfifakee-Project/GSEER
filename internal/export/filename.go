@@ -45,12 +45,22 @@ func ValidateOutPath(name string) error {
 	if strings.TrimSpace(name) == "" {
 		return fmt.Errorf("E_EXPORT_PATH: output path is empty")
 	}
-	if name != filepath.Clean(name) {
+	// filepath.Clean on Windows converts / to \, so compare against the
+	// OS-native form of the input: this accepts both separators everywhere
+	// while still rejecting redundant separators, "." and ".." elements,
+	// and trailing separators.
+	native := filepath.FromSlash(name)
+	if native != filepath.Clean(native) {
 		return fmt.Errorf("E_EXPORT_PATH: path %q is not in clean form (use %q)", name, filepath.Clean(name))
 	}
-	for _, part := range strings.Split(name, string(filepath.Separator)) {
-		if part == ".." {
-			return fmt.Errorf("E_EXPORT_PATH: path %q contains a \"..\" segment — choose a concrete directory", name)
+	// Check for ".." using both separators so mixed / \ paths are caught
+	// on every OS (a /-separated path on Windows or a \-separated path on
+	// Unix must still be rejected).
+	for _, sep := range []string{string(filepath.Separator), "/"} {
+		for _, part := range strings.Split(name, sep) {
+			if part == ".." {
+				return fmt.Errorf("E_EXPORT_PATH: path %q contains a \"..\" segment — choose a concrete directory", name)
+			}
 		}
 	}
 	if strings.ContainsAny(name, "\x00\n\r\t") {

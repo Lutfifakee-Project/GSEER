@@ -18,6 +18,8 @@ package fprule
 
 import (
 	"fmt"
+	"path"
+	"strings"
 	"testing"
 )
 
@@ -143,5 +145,67 @@ func TestSeedNoExploitationShape(t *testing.T) {
 	}
 	if problems := Lint(rules); len(problems) != 0 {
 		t.Fatalf("seed must never trip the exploitation lint: %v", problems)
+	}
+}
+
+// TestSeedFSUsesSlashPaths — Windows regression: embed.FS requires
+// slash-separated names on every OS.  LoadSeed must pass path.Join-style
+// (slash) paths to seedFS.ReadFile, never filepath.Join-style
+// (backslash on Windows) paths.  Reading each known seed file directly
+// through seedFS with a slash path proves the contract.
+func TestSeedFSUsesSlashPaths(t *testing.T) {
+	// The seed set is embedded; enumerate expected files and read each
+	// through seedFS using a slash-separated path.  On Windows this
+	// catches any accidental filepath.Join("seed", name) usage, which
+	// would produce "seed\<name>" and fail with "file does not exist".
+	entries, err := seedFS.ReadDir("seed")
+	if err != nil {
+		t.Fatalf("seedFS.ReadDir: %v", err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") {
+			continue
+		}
+		fsPath := path.Join("seed", e.Name()) // slash-separated, OS-independent
+		if _, err := seedFS.ReadFile(fsPath); err != nil {
+			t.Errorf("seedFS.ReadFile(%q) = %v — seed loading must use slash paths", fsPath, err)
+		}
+	}
+}
+
+// TestSeedLoadRoundTripWindows — every file that LoadSeed enumerates
+// must also be readable by LoadSeed itself.  On Windows this catches
+// any backslash path passed to embed.FS (file does not exist).
+func TestSeedLoadRoundTripWindows(t *testing.T) {
+	rules, problems, err := LoadSeed()
+	if err != nil {
+		t.Fatalf("LoadSeed: %v", err)
+	}
+	if len(problems) != 0 {
+		t.Fatalf("seed parse problems: %v", problems)
+	}
+	if len(rules) == 0 {
+		t.Fatal("no seed rules loaded")
+	}
+	// Every expected seed file must produce a rule with matching ID.
+	expected := []string{
+		"cms-wordpress", "framework-django-admin",
+		"language-php", "language-python",
+		"service-openssh",
+		"web-server-apache", "web-server-caddy", "web-server-envoy",
+		"web-server-gunicorn", "web-server-iis", "web-server-jetty",
+		"web-server-kestrel", "web-server-lighttpd", "web-server-litespeed",
+		"web-server-nginx", "web-server-openresty", "web-server-tomcat",
+		"web-server-tornado", "web-server-werkzeug",
+		"web-tech-cloudflare", "web-tech-varnish", "web-tech-vercel",
+	}
+	seen := map[string]bool{}
+	for _, r := range rules {
+		seen[r.ID] = true
+	}
+	for _, id := range expected {
+		if !seen[id] {
+			t.Errorf("seed rule %q not loaded (missing from LoadSeed output)", id)
+		}
 	}
 }
