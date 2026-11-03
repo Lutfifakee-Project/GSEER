@@ -63,24 +63,23 @@ func TestNoPhantomCommands(t *testing.T) {
 
 	// Each line in the Commands: section that names a command must be
 	// registered.  We extract the first token of each non-empty line.
+	// Stop at the "Flags:" section which follows the command list.
 	for _, line := range strings.Split(cmdsSection, "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, "Commands:") {
 			continue
 		}
+		if strings.HasPrefix(line, "Flags:") {
+			break
+		}
 		fields := strings.Fields(line)
 		if len(fields) == 0 {
 			continue
 		}
-		// The first field is the command name (or "command subcommand").
-		// Two-token commands: "server start", "source list", etc.
-		var name string
-		switch {
-		case len(fields) >= 2 && (fields[0] == "server" || fields[0] == "source" || fields[0] == "rules" || fields[0] == "db" || fields[0] == "collect"):
-			name = fields[0] + " " + fields[1]
-		default:
-			name = fields[0]
-		}
+		// The first field is the command name.  Cobra renders commands
+		// as single words (e.g. "server", "source", "collect"), not
+		// two-token pairs ("server start", "source list", etc.).
+		name := fields[0]
 		if _, ok := registered[name]; !ok {
 			t.Errorf("phantom command %q listed in help but not registered", name)
 		}

@@ -122,8 +122,8 @@ func TestHelpListsV002Commands(t *testing.T) {
 		t.Fatalf("--help returned error: %v", err)
 	}
 	for _, want := range []string{
-		"source add", "source enable", "source disable",
-		"collect run", "collect status",
+		"source",
+		"collect",
 		"suppress",
 	} {
 		if !strings.Contains(help, want) {

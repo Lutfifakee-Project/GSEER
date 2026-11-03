@@ -69,32 +69,6 @@ var RootCmd = &cobra.Command{
 	Long: `GSEER — Internet Asset Intelligence & Search Engine
 Discover. Identify. Search.
 
-Usage:
-  gseer [command] [flags]
-
-Commands:
-  search <query>   Search the configured index with GQL
-  setup            Configure an endpoint (client) or initialize self-hosted mode
-  suppress         Manage the suppression policy (blocks records before ingestion)
-  doctor           Diagnose config, connectivity, database, and index health
-  version          Show version, commit, and build info
-  server start     Start the local API + dashboard server
-  server status    Show server status
-  server stop      Stop the server
-  db migrate       Inspect and recover database migrations (status | diagnose | force)
-  source list      List registered data sources with their terms verdicts
-  source add       Register a data source (terms-reviewed; nothing collects until run)
-  source enable    Enable a registered data source
-  source disable   Disable a registered data source
-  collect run      Run passive connectors for enabled sources (explicit; never scans)
-  collect status   Show collection bookkeeping (jobs, dead letters)
-  collect redrive  Re-ingest dead-lettered records (explicit; v0.1.0)
-  export <query>   Export search results as JSON/CSV/NDJSON (v0.1.0)
-  update           Verify and apply signed updates (v0.1.0)
-  rules list       List loaded fingerprint rules (v0.1.0)
-  rules validate   Lint fingerprint rules and run their false-positive tests
-  completion       Generate shell completion (bash, zsh, fish, powershell)
-
 Quick start:
   gseer setup
   gseer doctor
