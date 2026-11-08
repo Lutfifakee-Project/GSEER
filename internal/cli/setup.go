@@ -19,8 +19,11 @@ package cli
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"strings"
 
@@ -59,12 +62,14 @@ import (
 // registerSetupCmd attaches `gseer setup`.
 func registerSetupCmd(root *cobra.Command) {
 	var (
-		selfHosted    bool
-		withCompose   bool
-		withFull      bool
-		dbURL         string
-		loadFixtures  bool
-		purgeFixtures bool
+		selfHosted           bool
+		withCompose          bool
+		withFull             bool
+		dbURL                string
+		loadFixtures         bool
+		purgeFixtures        bool
+		resetRuntimePassword bool
+		runtimePasswordEnv   string
 	)
 	cmd := &cobra.Command{
 		Use:   "setup",
@@ -74,8 +79,20 @@ func registerSetupCmd(root *cobra.Command) {
 Two profiles (SPEC-03 §5):
   - client:        configures a remote endpoint URL (no PostgreSQL needed).
   - self-hosted:   verifies the database is reachable, checks the
-                   PostgreSQL version (15+, PD-8), and runs migrations
-                   to head — no manual SQL (QS-3).
+                   PostgreSQL version (16+, OD-7), and runs the hardened
+                   v0.2.0 deployment order — no manual SQL (QS-3):
+
+                     1. role bootstrap      gseer_policy_owner + gseer_app + D-47
+                     2. migrations to head  0001…0017
+                     3. runtime grants      the least-privilege gseer_app matrix
+                     4. privilege audit     fail-closed (OD-5); a failure
+                                            aborts the deployment
+
+                   When the bootstrap creates gseer_app, a random password
+                   is generated and the runtime DSN is printed once —
+                   store it in GSEER_DB_RUNTIME_DSN (the server requires
+                   it; docs/DEPLOYMENT.md).  --reset-runtime-password
+                   rotates the gseer_app password on an existing role.
 
 Fixture dataset (QS-6, labeled synthetic evaluation data):
   --load-fixtures    ingest the embedded synthetic corpus (Assets A–D,
@@ -151,7 +168,7 @@ explicit --profile still wins.`,
 			}
 
 			if selfHosted {
-				if err := runSetupSelfHosted(cmd, cfg, dbURL, loadFixtures || purgeFixtures); err != nil {
+				if err := runSetupSelfHosted(cmd, cfg, dbURL, loadFixtures || purgeFixtures, resetRuntimePassword, runtimePasswordEnv); err != nil {
 					return err
 				}
 				if loadFixtures || purgeFixtures {
@@ -188,6 +205,8 @@ explicit --profile still wins.`,
 	cmd.Flags().StringVar(&dbURL, "db-url", "", "override the saved DSN (used with --self-hosted and the fixture actions)")
 	cmd.Flags().BoolVar(&loadFixtures, "load-fixtures", false, "load the labeled synthetic fixture dataset (QS-6; idempotent)")
 	cmd.Flags().BoolVar(&purgeFixtures, "purge-fixtures", false, "remove the fixture dataset and report the counts (QS-6; scoped to fixture-tagged rows)")
+	cmd.Flags().BoolVar(&resetRuntimePassword, "reset-runtime-password", false, "rotate the gseer_app runtime password and print the runtime DSN again")
+	cmd.Flags().StringVar(&runtimePasswordEnv, "runtime-password-env", "", "set the gseer_app password from this env var (deterministic provisioning, e.g. the compose full stack); implies a password set")
 	root.AddCommand(cmd)
 }
 
@@ -213,47 +232,155 @@ func setupFixturesDSN(cfg *config.Config, dbURL string) string {
 	return cfg.Database.EffectiveDSN()
 }
 
-// provisionSelfHosted runs the shared M3 provisioning core so both the
-// plain --self-hosted path and the M4 fixture actions see the exact
-// same checks: reachability → PG version floor (PD-8) → migrations to
-// head.  Each step reports on out; the first failure returns the
-// rendered error and stops before any later step.
-func provisionSelfHosted(cmd *cobra.Command, cfg *config.Config, dsn string) error {
+// provisionResult reports what the hardened provisioning did so the
+// tail can hand off the runtime credential exactly once.
+type provisionResult struct {
+	// roleAppCreated is true when the bootstrap created gseer_app in
+	// this run (its password is only then known here).
+	roleAppCreated bool
+	// runtimeDSN is the gseer_app DSN with the freshly generated
+	// password (empty unless this run set the password).
+	runtimeDSN string
+}
+
+// provisionSelfHosted runs the hardened v0.2.0 deployment order (Rev
+// 6.7.2 §6.2; roadmap M-A/M-B/M-C/M-D) so both the plain --self-hosted
+// path and the M4 fixture actions see the exact same steps:
+//
+//	reachability → PG floor (OD-7) → role bootstrap (step 1) →
+//	migrations to head (step 2) → runtime grants (step 3) →
+//	runtime password (when created/reset) → privilege audit (step 4,
+//	fail-closed).
+//
+// Every step reports on out; the first failure stops before any later
+// step.  A failed privilege audit refuses the deployment with exit 5
+// (OD-5: no runtime traffic past a failed audit — there is no bypass).
+func provisionSelfHosted(cmd *cobra.Command, cfg *config.Config, dsn string, resetRuntimePassword bool, runtimePasswordEnv string) (*provisionResult, error) {
 	out := cmd.OutOrStdout()
 	ctx := commandContext(cmd)
+	res := &provisionResult{}
 
-	// 1. Reachability BEFORE migrating (SPEC-05 §1; owner directive §5.4).
+	// 1. Reachability BEFORE touching anything (SPEC-05 §1).
 	if err := postgres.CheckReachable(ctx, dsn); err != nil {
-		return err
+		return nil, err
 	}
 	printf(out, "[ ok  ] DB reachable at %s\n", postgres.MustRedactDSN(dsn))
 
-	// 2. PG version floor (PD-8).
+	// 2. PG version floor (OD-7 — PostgreSQL 16+ for the v0.2.0
+	//    privilege model; PD-8's floor 15 was the v0.1.0 contract).
 	major, err := postgres.CheckPGVersion(ctx, dsn, cfg.Defaults.PostgresMajor)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	printf(out, "[ ok  ] PG version: %d (minimum %d, PD-8)\n", major, cfg.Defaults.PostgresMajor)
+	printf(out, "[ ok  ] PG version: %d (minimum %d, OD-7)\n", major, cfg.Defaults.PostgresMajor)
 
-	// 3. Migrations to head — one atomic transaction per migration;
-	//    bounded advisory-lock wait (DB_MIGRATION_LOCK_TIMEOUT on
-	//    contention); dirty state fails with recovery guidance.
+	// 3. Role bootstrap (deployment step 1 — BEFORE migrations: the
+	//    0016 refusal guard verifies the roles and the D-47 membership).
+	//    Refuse-first: unsafe pre-existing roles fail loudly.
+	notes, err := postgres.BootstrapRoles(ctx, dsn)
+	if err != nil {
+		return nil, fmt.Errorf("E_BOOTSTRAP: role bootstrap failed: %s\n"+
+			"Why: the bootstrap script creates/validates gseer_policy_owner, gseer_app, and the D-47 membership; "+
+			"it refuses unsafe states instead of repairing them.\n"+
+			"Try: run with the database-owner credential (the compose default); remediate the reported role state; re-run: gseer setup --self-hosted", err)
+	}
+	for _, n := range notes {
+		printf(out, "[boot] %s\n", n)
+	}
+	for _, n := range notes {
+		if strings.Contains(n, "created role "+postgres.RoleApp) {
+			res.roleAppCreated = true
+		}
+	}
+
+	// 4. Migrations to head (deployment step 2 — 0001…0017; one atomic
+	//    transaction per migration; bounded advisory-lock wait).
 	applied, head, err := postgres.RunMigrations(dsn, cfg.Database.MigrationLockTimeoutMs)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	printf(out, "[ ok  ] migrations: %d applied, schema at head v%d\n", applied, head)
-	return nil
+
+	// 5. Runtime grants (deployment step 3 — the §5.2 matrix; additive-
+	//    only, idempotent, never revokes or widens).
+	notes, err = postgres.ApplyRuntimeGrants(ctx, dsn)
+	if err != nil {
+		return nil, fmt.Errorf("E_RUNTIME_GRANTS: runtime grant setup failed: %s\n"+
+			"Why: the grant script is additive-only and never repairs an unexpected state (fail-closed).\n"+
+			"Try: inspect the error with the operator credential; docs/DEPLOYMENT.md §3.5 lists the safe repairs", err)
+	}
+	for _, n := range notes {
+		printf(out, "[grnt] %s\n", n)
+	}
+
+	// 6. Runtime credential: set gseer_app's password when the role was
+	//    created here, on explicit rotation, or on deterministic
+	//    provisioning (--runtime-password-env) and hand off the DSN.
+	if res.roleAppCreated || resetRuntimePassword || runtimePasswordEnv != "" {
+		var pw string
+		if runtimePasswordEnv != "" {
+			pw = os.Getenv(runtimePasswordEnv)
+			if pw == "" {
+				return nil, fmt.Errorf("E_RUNTIME_PASSWORD_ENV: --runtime-password-env %q is empty or unset\n"+
+					"Why: deterministic provisioning needs the password present in the environment\n"+
+					"Try: set %s (e.g. in the compose .env) and re-run", runtimePasswordEnv, runtimePasswordEnv)
+			}
+		} else {
+			generated, gerr := generateRuntimePassword()
+			if gerr != nil {
+				return nil, fmt.Errorf("E_RUNTIME_PASSWORD: cannot generate the gseer_app password: %s", gerr)
+			}
+			pw = generated
+		}
+		if serr := postgres.SetAppRolePassword(ctx, dsn, pw); serr != nil {
+			return nil, fmt.Errorf("E_RUNTIME_PASSWORD: cannot set the gseer_app password: %s\n"+
+				"Why: the runtime credential needs a password before anything can log in as gseer_app\n"+
+				"Try: run as a credential that may ALTER ROLE, or set the password manually, then re-run with --reset-runtime-password", serr)
+		}
+		rdsn, berr := runtimeDSNFromOperator(dsn, postgres.RoleApp, pw)
+		if berr != nil {
+			printf(out, "[ ok  ] runtime credential: password set for %s (build the runtime DSN yourself — the operator DSN is not URL-shaped)\n", postgres.RoleApp)
+		} else {
+			res.runtimeDSN = rdsn
+		}
+		printf(out, "[ ok  ] runtime credential: password set for %s (rotate anytime: gseer setup --self-hosted --reset-runtime-password)\n", postgres.RoleApp)
+	}
+
+	// 7. Privilege audit (deployment step 4 — read-only, fail-closed).
+	report, aerr := postgres.RunPrivilegeAudit(ctx, dsn)
+	if aerr != nil {
+		return nil, fmt.Errorf("E_AUDIT_UNAVAILABLE: the privilege audit could not run: %s\n"+
+			"Why: an audit that cannot run is not an audit that passed (fail-closed)\n"+
+			"Try: check the database connection and re-run: gseer setup --self-hosted", aerr)
+	}
+	for _, n := range report.Notices {
+		printf(out, "[audt] %s\n", n)
+	}
+	if !report.Passed {
+		printf(out, "E_PRIVILEGE_AUDIT_FAILED: the fail-closed privilege audit refused this deployment (%d failure(s))\n", len(report.Failures))
+		for _, f := range report.Failures {
+			printf(out, "  - %s\n", f)
+		}
+		printf(out, "Why: OD-5 — no runtime traffic before a passed audit; there is no bypass, flag, or override.\n"+
+			"Try: fix the deployment, never the check: docs/DEPLOYMENT.md §3.5 lists the safe repairs. Do NOT grant the missing privileges to gseer_app.")
+		exitWith(ExitAuth) // exit 5: the deployment is refused
+		return nil, nil
+	}
+	printf(out, "[ ok  ] privilege audit: PASSED (fail-closed gate, OD-5)\n")
+
+	return res, nil
 }
 
-// runSetupSelfHosted performs the M3 self-hosted provisioning via the
-// shared core, then prints the next-steps tail.  Never runs fixtures
-// and never binds a listener (that is M4/M10/M11 work); fixtureFollows
-// suppresses the tail when a fixture action follows in the same run.
-func runSetupSelfHosted(cmd *cobra.Command, cfg *config.Config, dbURL string, fixtureFollows bool) error {
+// runSetupSelfHosted performs the hardened v0.2.0 provisioning via the
+// shared core, then prints the next-steps tail (including the one-time
+// runtime-credential handoff).  Never runs fixtures and never binds a
+// listener (that is M4/M10/M11 work); fixtureFollows suppresses the
+// tail when a fixture action follows in the same run.
+func runSetupSelfHosted(cmd *cobra.Command, cfg *config.Config, dbURL string, fixtureFollows, resetRuntimePassword bool, runtimePasswordEnv string) error {
 	out := cmd.OutOrStdout()
 
-	if err := provisionSelfHosted(cmd, cfg, setupFixturesDSN(cfg, dbURL)); err != nil {
+	res, err := provisionSelfHosted(cmd, cfg, setupFixturesDSN(cfg, dbURL), resetRuntimePassword, runtimePasswordEnv)
+	if err != nil {
 		return err
 	}
 
@@ -262,13 +389,53 @@ func runSetupSelfHosted(cmd *cobra.Command, cfg *config.Config, dbURL string, fi
 		return nil
 	}
 
-	printf(out, "\nSelf-hosted mode ready. Next:\n")
+	printf(out, "\nSelf-hosted mode ready (hardened model, Rev 6.7.2).\n")
+	if res.runtimeDSN != "" {
+		printf(out, "\nRuntime credential (gseer_app) — shown ONCE, store it now:\n")
+		printf(out, "  export GSEER_DB_RUNTIME_DSN='%s'\n", res.runtimeDSN)
+		printf(out, "  (the server requires this credential; it never serves traffic as the operator — docs/DEPLOYMENT.md)\n")
+	} else if res.roleAppCreated {
+		printf(out, "\nRuntime credential: gseer_app was created but the runtime DSN could not be derived from a non-URL operator DSN; construct it as postgres://%s:<password>@<host>:<port>/<db>?sslmode=…\n", postgres.RoleApp)
+	} else {
+		printf(out, "\nRuntime credential: gseer_app already existed — its password lives in your secret channel.\n")
+		printf(out, "  Lost it? gseer setup --self-hosted --reset-runtime-password  (rotates and prints a new DSN)\n")
+	}
+	printf(out, "\nNext:\n")
 	printf(out, "  gseer doctor                    — verify the environment\n")
-	printf(out, "  gseer server start              — start the API + dashboard (M10)\n")
+	printf(out, "  gseer server start              — start the API + dashboard (requires GSEER_DB_RUNTIME_DSN)\n")
 	if cfg.Policy.EvaluationFixtures {
 		printf(out, "  gseer setup --load-fixtures     — load the synthetic dataset (QS-6)\n")
 	}
 	return nil
+}
+
+// generateRuntimePassword returns a 24-byte random URL-safe password
+// (192 bits — no dictionary, no reuse; generated here, stored only in
+// the database and the printed handoff).
+func generateRuntimePassword() (string, error) {
+	raw := make([]byte, 24)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	return base64.RawURLEncoding.EncodeToString(raw), nil
+}
+
+// runtimeDSNFromOperator derives the gseer_app runtime DSN from the
+// operator DSN by swapping ONLY the userinfo (user + password) — host,
+// port, database, and sslmode/parameters are preserved exactly.  Only
+// URL-form DSNs are supported for the derivation; anything else returns
+// an error so the operator constructs the DSN deliberately (never a
+// guessed half-DSN).
+func runtimeDSNFromOperator(operatorDSN, user, password string) (string, error) {
+	u, err := url.Parse(operatorDSN)
+	if err != nil || u.Scheme == "" || u.Host == "" {
+		return "", fmt.Errorf("operator DSN is not URL-shaped")
+	}
+	if u.Scheme != "postgres" && u.Scheme != "postgresql" {
+		return "", fmt.Errorf("operator DSN scheme %q is not postgres", u.Scheme)
+	}
+	u.User = url.UserPassword(user, password)
+	return u.String(), nil
 }
 
 // runSetupLoadFixtures loads the embedded fixture corpus behind the
@@ -287,7 +454,7 @@ func runSetupLoadFixtures(cmd *cobra.Command, cfg *config.Config, dbURL string) 
 	}
 
 	dsn := setupFixturesDSN(cfg, dbURL)
-	if err := provisionSelfHosted(cmd, cfg, dsn); err != nil {
+	if _, err := provisionSelfHosted(cmd, cfg, dsn, false, ""); err != nil {
 		return err
 	}
 
@@ -330,7 +497,7 @@ func runSetupPurgeFixtures(cmd *cobra.Command, cfg *config.Config, dbURL string)
 	}
 
 	dsn := setupFixturesDSN(cfg, dbURL)
-	if err := provisionSelfHosted(cmd, cfg, dsn); err != nil {
+	if _, err := provisionSelfHosted(cmd, cfg, dsn, false, ""); err != nil {
 		return err
 	}
 

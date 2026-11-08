@@ -264,11 +264,13 @@ func newSuppressRemoveCmd() *cobra.Command {
 	}
 }
 
-// openAppPool opens the application pool for a self-hosted config after
-// printing the redacted reachability line.  Shared by the suppress
-// commands (the source/collect commands reuse it in M15).
+// openAppPool opens the application pool a runtime data-plane command
+// uses (runtime data plane: suppress, source, collect, export) after
+// printing the redacted reachability line.  It prefers the
+// least-privilege gseer_app runtime credential and falls back to the
+// operator credential with an explicit notice (runtimeCommandDSN).
 func openAppPool(cmd *cobra.Command, cfg *config.Config) (*pgxpool.Pool, error) {
-	dsn := dbDSN(cfg)
+	dsn := runtimeCommandDSN(cmd.OutOrStdout(), cfg)
 	if err := postgres.CheckReachable(cmd.Context(), dsn); err != nil {
 		return nil, err
 	}

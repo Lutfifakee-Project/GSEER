@@ -33,6 +33,8 @@ import (
 //      GSEER_TOKEN                      → Server.Token (plaintext; hashed in Load)
 //      GSEER_SERVER_TRUSTED_PROXIES     → Server.TrustedProxies (CIDR list, M16)
 //      GSEER_DB_DSN                     → Database.DSN (overrides components)
+//      GSEER_DB_RUNTIME_DSN             → Database.RuntimeDSN (the gseer_app
+//                                         runtime credential, v0.2.0 M-B)
 //      GSEER_DB_HOST                    → Database.Host
 //      GSEER_DB_PORT                    → Database.Port
 //      GSEER_DB_USER                    → Database.User
@@ -112,6 +114,19 @@ var envMapping = []struct {
 			return false
 		}
 		c.Database.DSN = v
+		return true
+	}},
+	// GSEER_DB_RUNTIME_DSN (v0.2.0 M-B): the `gseer_app` least-privilege
+	// runtime credential DSN.  The server REQUIRES it (the hardened
+	// deployment order runs the fail-closed privilege audit against
+	// gseer_app and never serves traffic under the operator credential);
+	// CLI data-plane commands prefer it and fall back to the operator
+	// DSN with an explicit notice when it is unset.
+	{"GSEER_DB_RUNTIME_DSN", func(c *Config, v string) bool {
+		if v == "" {
+			return false
+		}
+		c.Database.RuntimeDSN = v
 		return true
 	}},
 	{"GSEER_DB_HOST", func(c *Config, v string) bool {

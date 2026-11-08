@@ -32,9 +32,9 @@ import (
 // db.go — the `gseer db migrate` administrative commands (M3, owner
 // directive §2 of the M3 authorization round):
 //
-//	gseer db migrate status      read-only migration state
-//	gseer db migrate diagnose    read-only recovery guidance
-//	gseer db migrate force       DESTRUCTIVE metadata-only version reset
+//      gseer db migrate status      read-only migration state
+//      gseer db migrate diagnose    read-only recovery guidance
+//      gseer db migrate force       DESTRUCTIVE metadata-only version reset
 //
 // Invariants (owner directive; enforced by tests AC-M3-12..15):
 //   - `setup --force-migrate-version` does NOT exist; force is only
@@ -72,11 +72,28 @@ func loadSelfHostedConfig() (*config.Config, error) {
 	return cfg, nil
 }
 
-// dbDSN resolves the effective connection DSN from the loaded config.
-// The result embeds the password and must only be passed to connection
-// APIs — every display path goes through postgres.MustRedactDSN.
+// dbDSN resolves the effective OPERATOR connection DSN from the loaded
+// config (migrations, diagnostics, setup).  The result embeds the
+// password and must only be passed to connection APIs — every display
+// path goes through postgres.MustRedactDSN.
 func dbDSN(cfg *config.Config) string {
 	return cfg.Database.EffectiveDSN()
+}
+
+// runtimeCommandDSN resolves the DSN a RUNTIME data-plane command
+// (search/export/collect/suppress/source/host) uses: the least-privilege
+// gseer_app credential when configured (runtime_dsn /
+// GSEER_DB_RUNTIME_DSN), otherwise the operator credential WITH AN
+// EXPLICIT notice — the fallback is never silent (AC-8.x honesty floor;
+// Rev 6.7.2 §5.2 runs the runtime grant model only when the runtime
+// credential is actually used).
+func runtimeCommandDSN(w io.Writer, cfg *config.Config) string {
+	dsn, explicit := cfg.Database.RuntimeCredentialDSN()
+	if !explicit {
+		printf(w, "[note ] GSEER_DB_RUNTIME_DSN is not set — this command runs under the operator credential\n"+
+			"        Hardened path: gseer setup --self-hosted provisions gseer_app and prints the runtime DSN once (docs/DEPLOYMENT.md §2)\n")
+	}
+	return dsn
 }
 
 // registerDBCmd attaches `gseer db` with its `migrate` subtree.

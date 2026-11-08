@@ -107,6 +107,7 @@ func init() {
 
 	registerVersionCmd(RootCmd)
 	registerSearchCmd(RootCmd)
+	registerHostCmd(RootCmd)
 	registerSetupCmd(RootCmd)
 	registerDoctorCmd(RootCmd)
 	registerServerCmd(RootCmd)

@@ -1,12 +1,29 @@
-# GSEER CI (v0.1.0).
+# GSEER CI (v0.2.0).
 #
 # AC-1.1: go build ./... under both 1.26.x and 1.27.x.
 # AC-1.2: go vet ./... clean.
 # AC-1.3: golangci-lint (v2 config) run clean.
 # AC-1.4: govulncheck ./... clean.
-# AC-3.1: import-graph test green (no collector/egress deps).
+# AC-3.1: import-graph test green (no collector/egress deps) — Search ≠ Scan.
 # AC-5.1: no-phantom-commands test — every help-listed command is
 #   registered and runnable (completed in M11; kept as a CI pin).
+# AC-M3-15: migration audit — force-migrate is reachable ONLY from
+#   `gseer db migrate force` and the storage admin primitive
+#   (TestForceNotCallableFromOtherCommands).
+# AC-M13:  privilege audit — suppression audit rows survive rule
+#   removal (TestSuppressionAuditSurvivesRuleRemoval).
+#
+# Integration suites use build tag `integration` and run against real
+# PostgreSQL 16 AND 17 (matrix). They CANNOT silently skip: the test
+# helpers (adminConnect/testDB/cliTestDB/colTestDB) call t.Fatalf on any
+# PG-reachability failure, so a missing GSEER_TEST_PG_ADMIN or a down
+# service fails the build instead of reporting a pass with skipped
+# suites. GSEER_TEST_REQUIRE=1 is set in CI as documentation of the
+# fail-hard posture (the code is already unconditionally fatal).
+#
+# Least-privilege: permissions: contents: read. Actions pinned:
+# checkout@v4, setup-go@v5, golangci/golangci-lint-action@v9.3.0.
+# govulncheck pinned to v1.9.0 (built with Go 1.27.x).
 #
 # The release gate requires all of the above green on both Go majors
 # before any release tag is created (which itself requires separate
@@ -23,9 +40,9 @@ on:
     # Nightly full DB battery: 18:00 UTC = 01:00 Asia/Jakarta (UTC+7).
     - cron: "0 18 * * *"
   workflow_dispatch:
-    # Manual dispatch — the only way to run the nightly full DB battery
-    # on demand (nightly-integration's job condition gates on this
-    # event or on `schedule` above; ordinary pushes never run it).
+    # Manual dispatch — runs the nightly full DB battery on demand
+    # (nightly-integration gates on this event or on `schedule` above;
+    # ordinary pushes never run it).
 
 permissions:
   contents: read
@@ -72,14 +89,19 @@ jobs:
       - name: Test (incl. AC-3.1 import-graph, AC-5.1 no-phantom stub)
         run: go test -race ./...
 
-  # Windows durability coverage for the updater: the replacement
-  # primitive (MoveFileExW with MOVEFILE_REPLACE_EXISTING |
-  # MOVEFILE_WRITE_THROUGH — os.Rename passes no write-through flag on
-  # Windows), the flag assertion, backup/rollback and the
-  # E_UPDATE_DIRSYNC warning contract can only execute on a Windows
-  # host.  The full platform-neutral updater suite runs here too.
+      - name: Migration audit (AC-M3-15)
+        # Surface pin over the full -race ./... run above: makes the
+        # force-callable invariant visible as its own CI step.
+        run: go test -run TestForceNotCallableFromOtherCommands -count=1 ./internal/cli
+
+  # Windows coverage: the updater durability suite (MoveFileExW flags,
+  # rollback, E_UPDATE_DIRSYNC warning, platform-honest permissions via
+  # assertPerm) and the Windows portability fixes (embed.FS path.Join,
+  # export clean-form FromSlash, db_test ToSlash) can only EXECUTE on a
+  # Windows host. The full unit suite also runs here — Windows is a
+  # first-class supported platform, not a compile-only target.
   update-windows:
-    name: Updater durability (windows)
+    name: Updater durability + full suite (windows)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -99,7 +121,7 @@ jobs:
         run: go build ./...
 
   lint:
-    name: Lint (golangci-lint)
+    name: Lint (golangci-lint v2)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -128,14 +150,17 @@ jobs:
         with:
           go-version: "1.27.x"
           cache: true
-      - name: Install govulncheck
-        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      # Pinned to v1.9.0 (built with Go 1.27.x) for reproducibility;
+      # `@latest` had previously resolved to a v1.1.4 binary that could
+      # not scan a Go 1.26 module.
+      - name: Install govulncheck (pinned v1.9.0)
+        run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
       - name: govulncheck (AC-1.4)
         run: govulncheck ./...
 
-  # The import-graph job is also run as a Go test above, but we surface
-  # it as its own job for visibility (the Search ≠ Scan invariant is the
-  # most important architectural property of GSEER).
+  # Search ≠ Scan is the most important architectural property of GSEER
+  # (the import graph never lets a collector/egress package reach the
+  # search or CLI packages). Surfaced as its own job for visibility.
   import-graph:
     name: Search ≠ Scan (AC-3.1)
     runs-on: ubuntu-latest
@@ -146,21 +171,24 @@ jobs:
           go-version: "1.27.x"
           cache: true
       - name: AC-3.1 import-graph test
-        run: go test -run TestImportGraphSearchNotScan ./internal/cli
+        run: go test -run TestImportGraphSearchNotScan -count=1 ./internal/cli
       - name: AC-7.x active-observation absence
-        run: go test -run TestNoCollectorPackageExists ./internal/cli
+        run: go test -run TestNoCollectorPackageExists -count=1 ./internal/cli
 
-  # Database integration tests against a real PostgreSQL service
-  # (migrations, bounded advisory lock, failure-injection rollback,
-  # force recovery, pool lifecycle, collection/suppression/facets/
-  # export flows).  Runs on every push and PR; the unit-only build job
-  # above stays fast (no PG container).
+  # Database integration tests against real PostgreSQL 16 AND 17
+  # (matrix). Runs on every push and PR; the unit-only build job above
+  # stays fast (no PG container). All seven integration packages run:
+  # storage/postgres, collect, search, gql/planner, fixture, cli, export.
   integration-test:
-    name: DB integration (PostgreSQL 17)
+    name: DB integration (PostgreSQL ${{ matrix.pg }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: ["16", "17"]
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:${{ matrix.pg }}-alpine
         env:
           POSTGRES_USER: gseer
           POSTGRES_DB: postgres
@@ -178,22 +206,41 @@ jobs:
         with:
           go-version: "1.27.x"
           cache: true
-      - name: Integration tests (AC-M3-1..18)
+      - name: Integration tests (all seven integration packages)
         env:
           GSEER_TEST_PG_ADMIN: postgres://gseer@127.0.0.1:5433/postgres?sslmode=disable
           GSEER_TEST_REQUIRE: "1"
-        run: go test -race -tags integration ./internal/storage/postgres/
+        run: >
+          go test -race -tags integration
+          ./internal/storage/postgres/
+          ./internal/collect/
+          ./internal/search/
+          ./internal/gql/planner/
+          ./internal/fixture/
+          ./internal/cli/
+          ./internal/export/
+      - name: Privilege audit (AC-M13 — suppression audit survival)
+        # Surface pin over the integration run above: the suppression
+        # audit invariant gets its own visible CI step.
+        env:
+          GSEER_TEST_PG_ADMIN: postgres://gseer@127.0.0.1:5433/postgres?sslmode=disable
+          GSEER_TEST_REQUIRE: "1"
+        run: go test -race -tags integration -run TestSuppressionAuditSurvivesRuleRemoval -count=1 ./internal/storage/postgres/
 
   # Full battery: nightly schedule (01:00 Asia/Jakarta) and manual
   # dispatch only — ordinary pushes keep the fast integration-test job
-  # above and never pay for the full battery.
+  # above and never pay for the full battery on both PG versions.
   nightly-integration:
-    name: Nightly DB integration (full battery)
+    name: Nightly DB integration (full battery, PG ${{ matrix.pg }})
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        pg: ["16", "17"]
     services:
       postgres:
-        image: postgres:17-alpine
+        image: postgres:${{ matrix.pg }}-alpine
         env:
           POSTGRES_USER: gseer
           POSTGRES_DB: postgres
@@ -215,4 +262,12 @@ jobs:
         env:
           GSEER_TEST_PG_ADMIN: postgres://gseer@127.0.0.1:5433/postgres?sslmode=disable
           GSEER_TEST_REQUIRE: "1"
-        run: go test -race -tags integration -cover ./internal/storage/postgres/
+        run: >
+          go test -race -tags integration -cover
+          ./internal/storage/postgres/
+          ./internal/collect/
+          ./internal/search/
+          ./internal/gql/planner/
+          ./internal/fixture/
+          ./internal/cli/
+          ./internal/export/

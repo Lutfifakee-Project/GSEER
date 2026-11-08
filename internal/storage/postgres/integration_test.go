@@ -177,8 +177,8 @@ func TestMigrateFreshDatabaseRoundTrip(t *testing.T) {
 	if head != wantHead {
 		t.Errorf("head = %d, want %d", head, wantHead)
 	}
-	if applied != wantHead {
-		t.Errorf("applied = %d, want %d", applied, wantHead)
+	if applied != wantFileCount {
+		t.Errorf("applied = %d, want %d files", applied, wantFileCount)
 	}
 	for _, rel := range []string{"assets", "services", "observations", "data_sources",
 		"latest_http", "latest_tls", "latest_fingerprints", "search_index", "schema_migrations"} {
@@ -392,8 +392,8 @@ func TestMigrateLockTimeoutConcurrent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("post-release migrate: %v", err)
 	}
-	if applied != wantHead || head != wantHead {
-		t.Errorf("post-release applied=%d head=%d, want %d/%d", applied, head, wantHead, wantHead)
+	if applied != wantFileCount || head != wantHead {
+		t.Errorf("post-release applied=%d head=%d, want %d/%d", applied, head, wantFileCount, wantHead)
 	}
 	if v, dirty, ok := schemaMigrationsRow(t, dsn); !ok || v != wantHead || dirty {
 		t.Errorf("schema_migrations = (%d, %v, %v), want (%d, false, true)", v, dirty, ok, wantHead)
@@ -415,8 +415,8 @@ func TestMigrationStatusBranches(t *testing.T) {
 	if st.State != StateUninitialized {
 		t.Errorf("fresh DB state = %s, want UNINITIALIZED", st.State)
 	}
-	if len(st.Pending) != wantHead {
-		t.Errorf("fresh DB pending = %v, want %d files", st.Pending, wantHead)
+	if len(st.Pending) != 8 { // 8 up-files (0001–0006 + 0016 + 0017; head is 17 per OD-4's reserved range)
+		t.Errorf("fresh DB pending = %v, want 8 files", st.Pending)
 	}
 
 	// AT_HEAD.
@@ -443,7 +443,7 @@ func TestMigrationStatusBranches(t *testing.T) {
 	if st.State != StateBehind {
 		t.Errorf("behind state = %s, want BEHIND", st.State)
 	}
-	if len(st.Pending) != 5 || st.Pending[0] != "0002_helper_views.up.sql" ||
+	if len(st.Pending) != 7 || st.Pending[0] != "0002_helper_views.up.sql" ||
 		st.Pending[1] != "0003_search_index.up.sql" || st.Pending[2] != "0004_search_indexes.up.sql" ||
 		st.Pending[3] != "0005_suppressions.up.sql" {
 		t.Errorf("behind pending = %v", st.Pending)
@@ -884,8 +884,8 @@ func TestSearchPlanIndexes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	if applied != wantHead || head != wantHead {
-		t.Errorf("applied=%d head=%d, want %d/%d (fresh DB, all embedded migrations)", applied, head, wantHead, wantHead)
+	if applied != wantFileCount || head != wantHead {
+		t.Errorf("applied=%d head=%d, want %d/%d (fresh DB, all embedded migration FILES)", applied, head, wantFileCount, wantHead)
 	}
 	pool, err := NewPool(ctx, dsn)
 	if err != nil {
@@ -1037,8 +1037,8 @@ func TestMigrateSerializationWaitThenSucceed(t *testing.T) {
 		}
 		t.Fatalf("post-wait migrate: %v", r.err)
 	}
-	if r.applied != wantHead || r.head != wantHead {
-		t.Errorf("applied=%d head=%d, want %d/%d (fresh DB, all embedded migrations)", r.applied, r.head, wantHead, wantHead)
+	if r.applied != wantFileCount || r.head != wantHead {
+		t.Errorf("applied=%d head=%d, want %d/%d (fresh DB, all embedded migration FILES)", r.applied, r.head, wantFileCount, wantHead)
 	}
 	// Ordering proof: the contender finished AFTER the holder released
 	// (t0+600ms), i.e. it waited for the lock rather than running

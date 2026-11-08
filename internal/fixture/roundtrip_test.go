@@ -106,6 +106,12 @@ func testPool(t *testing.T) (*pgxpool.Pool, string, func()) {
 		dropDatabase(t, dsn, name)
 		t.Fatalf("cannot build pool for %s: %v", name, err)
 	}
+	// v0.2.0: bootstrap roles before the hardened migration set.
+	if _, err := postgres.BootstrapRoles(context.Background(), testDSN); err != nil {
+		pool.Close()
+		dropDatabase(t, dsn, name)
+		t.Fatalf("BootstrapRoles on %s: %v", name, err)
+	}
 	if _, _, err := postgres.RunMigrations(testDSN, 1001); err != nil {
 		pool.Close()
 		dropDatabase(t, dsn, name)

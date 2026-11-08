@@ -298,6 +298,15 @@ func TestSetupSelfHostedFreshMachineContract(t *testing.T) {
 	}
 
 	// --- 2. bare --self-hosted implies the self-hosted profile. ---
+	// Hermeticity: the failure must come from an UNREACHABLE database,
+	// never from the ambient machine.  Machines that run PostgreSQL on
+	// the default port (developer laptops, CI services, this sandbox)
+	// would otherwise "succeed" against an unrelated cluster and
+	// break the contract being pinned.  Port 9 (discard) with a
+	// bounded connect timeout is refused deterministically; the
+	// profile-implication assertion is unaffected — the regression
+	// this test exists for is the CIRCULAR client-profile error
+	// (client.endpoint), which is decided before any DB contact.
 	resetSetupFlags(t)
 	cmd2 := findSetup(t)
 	out2 := &bytes.Buffer{}
@@ -305,6 +314,7 @@ func TestSetupSelfHostedFreshMachineContract(t *testing.T) {
 	if err := cmd2.Flags().Set("self-hosted", "true"); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("GSEER_DB_DSN", "postgres://gseer:fresh@127.0.0.1:9/gseer?sslmode=disable&connect_timeout=2")
 	err2 := cmd2.RunE(cmd2, nil)
 	if err2 == nil {
 		t.Fatal("expected the DB-reachability failure on a fresh machine, got nil")

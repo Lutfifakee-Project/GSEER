@@ -43,10 +43,16 @@ import (
 
 // server.go — `gseer server start | status | stop` (SPEC-03 §2).
 //
-// start: self-hosted only; runs migrations (QS-7), opens the pool, and
-// serves the REST API (/api/v1) + dashboard (/) over the SAME
-// SearchService (AC-4.9).  Runs in the foreground with graceful
-// shutdown on SIGINT/SIGTERM; the pidfile enables `server stop`.
+// start: self-hosted only; runs under the least-privilege RUNTIME
+// credential (gseer_app — required), gates on the fail-closed effective-
+// privilege audit (OD-5) BEFORE the bind, and serves the REST API
+// (/api/v1) + dashboard (/) over the SAME SearchService (AC-4.9).
+// Runs in the foreground with graceful shutdown on SIGINT/SIGTERM; the
+// pidfile enables `server stop`.
+//
+// Migrations are OPERATOR work (gseer setup --self-hosted): gseer_app is
+// deliberately denied the migration ledger and can never run them.  The
+// audit proves the hardened schema is in place before any traffic.
 //
 // The server is read-only: every handler is search/stats/health — no
 // scanning surface exists anywhere behind it (ADR-0010).
@@ -60,11 +66,19 @@ func registerServerCmd(root *cobra.Command) {
 	}
 	start := &cobra.Command{
 		Use:   "start",
-		Short: "Start the local API + dashboard server",
+		Short: "Start the local API + dashboard server (hardened: gseer_app credential + privilege audit)",
 		Long: `Start the local API + dashboard server.
 
-Self-hosted profile only.  Migrations run automatically on start (QS-7).
-The server listens on the configured address (loopback by default).
+Self-hosted profile only.  v0.2.0 hardened startup (OD-5, Rev 6.7.2):
+  1. requires the least-privilege runtime credential gseer_app
+     (database.runtime_dsn / GSEER_DB_RUNTIME_DSN — provisioned and
+     printed once by gseer setup --self-hosted);
+  2. runs the fail-closed effective-privilege audit BEFORE binding —
+     a failed audit refuses startup with exit 5; there is no bypass;
+  3. serves the REST API + dashboard under gseer_app, never under the
+     operator credential.
+Migrations are operator work (gseer setup --self-hosted); the runtime
+credential cannot run them and the server refuses an unaudited schema.
 Runs in the foreground; stop with Ctrl-C or: gseer server stop`,
 		Args: cobra.NoArgs,
 		RunE: runServerStart,
@@ -119,21 +133,62 @@ func runServerStart(cmd *cobra.Command, args []string) error {
 
 	ctx := context.Background()
 
-	// Pool + migrations (QS-7: migrations run automatically on start).
-	pool, err := pgxpool.New(ctx, cfg.Database.EffectiveDSN())
+	// Hardened credential model (v0.2.0, Rev 6.7.2 §6.2 step 5): the
+	// server runs ONLY with the least-privilege runtime credential —
+	// never with the operator credential.  Missing runtime credential
+	// is a configuration failure (exit 3) with the provisioning path.
+	runtimeDSN, explicit := cfg.Database.RuntimeCredentialDSN()
+	if !explicit {
+		printf(out, "E_RUNTIME_CREDENTIAL_REQUIRED: `server start` needs the least-privilege runtime credential (gseer_app)\n"+
+			"Why: the hardened v0.2.0 model never serves traffic under the operator credential (OD-5; docs/DEPLOYMENT.md §3.1)\n"+
+			"Try: gseer setup --self-hosted   (provisions gseer_app, applies the grants, runs the audit, and prints GSEER_DB_RUNTIME_DSN once)\n")
+		exitWith(ExitConfig)
+	}
+
+	pool, err := pgxpool.New(ctx, runtimeDSN)
 	if err != nil {
-		printf(out, "E_DB_UNAVAILABLE: cannot open the database pool\nWhy: %v\nTry: check database.dsn in the config — gseer doctor\n", err)
+		printf(out, "E_DB_UNAVAILABLE: cannot open the database pool (runtime credential)\nWhy: %v\nTry: check database.runtime_dsn in the config — gseer doctor\n", err)
 		exitWith(ExitUnavailable)
 	}
 	defer pool.Close()
 
-	printf(out, "Running migrations (QS-7) ...\n")
-	applied, head, err := postgres.RunMigrations(cfg.Database.EffectiveDSN(), cfg.Database.MigrationLockTimeoutMs)
-	if err != nil {
-		printf(out, "DB_MIGRATION_FAILED: %v\nTry: gseer db migrate diagnose\n", err)
+	// Runtime-credential identity check (fail-closed, v0.2.0): the audit
+	// proves the gseer_app ROLE is least-privilege, but only the connecting
+	// user proves WHICH credential serves the traffic.  A superuser or
+	// operator DSN pasted into database.runtime_dsn would silently bypass
+	// the entire grant matrix — refuse it exactly like a failed audit.
+	if err := postgres.VerifyRuntimeIdentity(ctx, pool); err != nil {
+		printf(out, "E_RUNTIME_CREDENTIAL_MISMATCH: %s\n"+
+			"Why: the hardened model serves traffic ONLY as %s (OD-5; docs/DEPLOYMENT.md §3.1) — no bypass exists\n"+
+			"Try: point database.runtime_dsn at the gseer_app credential printed by gseer setup --self-hosted\n", err, postgres.RoleApp)
+		exitWith(ExitAuth) // exit 5: the security gate refused startup
+	}
+
+	// Fail-closed privilege audit (OD-5) — BEFORE the listener exists.
+	// Run under gseer_app itself: every catalog the audit consults is
+	// readable by non-superusers, so this both audits the deployment
+	// AND proves the runtime credential can see everything it needs.
+	// The audit is read-only.  A failed audit refuses startup with
+	// exit 5; there is no bypass, flag, or override.
+	printf(out, "Running the fail-closed privilege audit (OD-5) ...\n")
+	report, aerr := postgres.RunPrivilegeAudit(ctx, runtimeDSN)
+	if aerr != nil {
+		printf(out, "E_AUDIT_UNAVAILABLE: the privilege audit could not run\nWhy: %v\nTry: an audit that cannot run is not an audit that passed — check database.runtime_dsn and the deployment (gseer setup --self-hosted)\n", aerr)
 		exitWith(ExitUnavailable)
 	}
-	printf(out, "Migrations: applied %d, head %d.\n", applied, head)
+	for _, n := range report.Notices {
+		printf(out, "[audt] %s\n", n)
+	}
+	if !report.Passed {
+		printf(out, "E_PRIVILEGE_AUDIT_FAILED: startup refused — the fail-closed privilege audit found %d failure(s)\n", len(report.Failures))
+		for _, f := range report.Failures {
+			printf(out, "  - %s\n", f)
+		}
+		printf(out, "Why: OD-5 — no runtime traffic before a passed audit; there is no bypass, flag, or override.\n"+
+			"Try: fix the deployment, never the check (docs/DEPLOYMENT.md §3.5). Do NOT grant the missing privileges to gseer_app.")
+		exitWith(ExitAuth) // exit 5: the security gate refused startup
+	}
+	printf(out, "[ ok  ] privilege audit: PASSED — binding permitted (fail-closed gate, OD-5)\n")
 
 	// The shared SearchService — CLI, API, and dashboard all use it.
 	svc := search.New(pool)

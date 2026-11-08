@@ -93,7 +93,17 @@ type DatabaseConfig struct {
 	// DSN is the full connection string.  When set, it overrides the
 	// component fields below.  Format:
 	//   postgres://user:password@host:port/dbname?sslmode=disable
+	// This is the OPERATOR credential (database owner / migration
+	// executor) in the v0.2.0 dual-credential model.
 	DSN string `yaml:"dsn"`
+	// RuntimeDSN (v0.2.0 M-B) is the least-privilege RUNTIME credential
+	// — the `gseer_app` login role provisioned by the hardened
+	// deployment order (bootstrap → migrate → grants → audit).
+	// `gseer server start` REQUIRES it: the server never serves traffic
+	// under the operator credential (OD-5 fail-closed model).  CLI
+	// data-plane commands prefer it and say so explicitly when they
+	// fall back to the operator credential.
+	RuntimeDSN string `yaml:"runtime_dsn,omitempty"`
 	// Component fields (used when DSN is not set).
 	Host     string `yaml:"host"`
 	Port     int    `yaml:"port"`
@@ -214,6 +224,23 @@ func (d DatabaseConfig) EffectiveDSN() string {
 		sslmode = "disable" // loopback default
 	}
 	return fmtDSN(d.User, d.Password, d.Host, d.Port, d.Name, sslmode)
+}
+
+// RuntimeCredentialDSN returns the connection string the RUNTIME data
+// plane (server, search, collect, suppress, export, host) should use.
+// The second return reports whether the runtime credential was EXPLICITLY
+// configured (runtime_dsn / GSEER_DB_RUNTIME_DSN):
+//
+//	explicit=true  → hardened path: connect as gseer_app (least privilege).
+//	explicit=false → the deployment has not been provisioned with the
+//	  hardened role model; callers decide their own policy (the server
+//	  refuses; CLI commands fall back to the operator DSN with an
+//	  explicit notice — never silently).
+func (d DatabaseConfig) RuntimeCredentialDSN() (dsn string, explicit bool) {
+	if d.RuntimeDSN != "" {
+		return d.RuntimeDSN, true
+	}
+	return d.EffectiveDSN(), false
 }
 
 // fmtDSN builds a postgres URL-format DSN from components using net/url

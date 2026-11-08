@@ -58,7 +58,13 @@ func colTestDB(t *testing.T) (dsn string, cleanup func()) {
 	if _, err := adminPool.Exec(context.Background(), `CREATE DATABASE `+name); err != nil {
 		t.Fatalf("create test db: %v", err)
 	}
-	dsn = fmt.Sprintf("postgres://gseer@127.0.0.1:5433/%s?sslmode=disable", name)
+	// Derive the per-test DSN from the admin DSN (same host/port/user —
+	// the suite must run unchanged against ANY instance, e.g. the PG16
+	// and PG17 matrix instances).
+	dsn = strings.Replace(admin, "/postgres?", "/"+name+"?", 1)
+	if dsn == admin { // admin DSN had no "?"; append the path
+		dsn = strings.TrimSuffix(admin, "/postgres") + "/" + name
+	}
 	cleanup = func() {
 		p, err := pgxpool.New(context.Background(), admin)
 		if err != nil {
@@ -76,8 +82,17 @@ func colSetup(t *testing.T) (*Runner, *pgxpool.Pool) {
 	t.Helper()
 	dsn, cleanup := colTestDB(t)
 	t.Cleanup(cleanup)
+	// v0.2.0 hardened migrations: bootstrap first (0016 refusal guard),
+	// then migrate, then the runtime grants (ingestion runs may exercise
+	// the gseer_app grant surface).
+	if _, err := postgres.BootstrapRoles(context.Background(), dsn); err != nil {
+		t.Fatalf("BootstrapRoles: %v", err)
+	}
 	if _, _, err := postgres.RunMigrations(dsn, 5000); err != nil {
 		t.Fatalf("migrate: %v", err)
+	}
+	if _, err := postgres.ApplyRuntimeGrants(context.Background(), dsn); err != nil {
+		t.Fatalf("ApplyRuntimeGrants: %v", err)
 	}
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
@@ -263,6 +278,40 @@ func TestRunnerFullFlow(t *testing.T) {
 		// new fact (last_seen advances).  That is correct freshness
 		// behavior, so accept either: new observation or L2 dedupe.
 		t.Logf("re-sighting ingested as a new fact (ingested=%d deduped=%d)", stats2.Ingested, stats2.Deduped)
+	}
+}
+
+// TestRunnerStampsAssetSources — v0.2.0 regression (the documented
+// DEPLOYMENT.md §7 "empty sources" defect): collected assets must carry
+// the source NAME on the asset row, or they are invisible to the sources
+// facet, to search_index projections, and to `gseer host`.
+func TestRunnerStampsAssetSources(t *testing.T) {
+	r, pool := colSetup(t)
+	fake := &fakeCollector{kind: "dns", batches: []*Batch{
+		{Raws: []RawFact{
+			{AssetKind: "ip", Value: "203.0.113.77"},
+			{AssetKind: "domain", Value: "stamped.example"},
+		}, Done: true},
+	}}
+	r.collectors = map[string]Collector{"dns": fake}
+	colSource(t, r, "stamp-src", "dns", map[string]any{}, true)
+
+	if _, err := r.Run(context.Background(), "stamp-src"); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	for _, tc := range []struct{ kind, value string }{
+		{"ip", "203.0.113.77"},
+		{"domain", "stamped.example"},
+	} {
+		var sources []string
+		if err := pool.QueryRow(context.Background(),
+			`SELECT sources FROM assets WHERE kind=$1 AND value=$2`, tc.kind, tc.value).
+			Scan(&sources); err != nil {
+			t.Fatalf("asset %s/%s missing: %v", tc.kind, tc.value, err)
+		}
+		if len(sources) != 1 || sources[0] != "stamp-src" {
+			t.Errorf("asset %s/%s sources = %v, want [stamp-src]", tc.kind, tc.value, sources)
+		}
 	}
 }
 

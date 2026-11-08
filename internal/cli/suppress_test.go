@@ -21,6 +21,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/spf13/cobra"
 )
 
 // suppress_test.go — unit coverage of the `gseer suppress` surface that
@@ -52,6 +54,27 @@ func executeRoot(t *testing.T, args ...string) (string, error) {
 	RootCmd.SetOut(buf)
 	RootCmd.SetErr(buf)
 	RootCmd.SetArgs(args)
+	// Reset the cobra-managed help/version flags before parsing.  pflag
+	// values persist across Execute() calls on the shared command tree
+	// (the same shared-state class the per-command reset seams handle),
+	// and cobra defines `help` PER COMMAND (InitDefaultHelpFlag) when a
+	// command is first executed: a prior test's `gseer search --help`
+	// would otherwise leave search's help flag TRUE and this parse
+	// would render help instead of running the command — order
+	// dependence between the banner/help tests and every E2E test.
+	var resetHelpVersion func(c *cobra.Command)
+	resetHelpVersion = func(c *cobra.Command) {
+		for _, name := range []string{"help", "version"} {
+			if f := c.Flags().Lookup(name); f != nil {
+				_ = f.Value.Set(f.DefValue)
+				f.Changed = false
+			}
+		}
+		for _, sub := range c.Commands() {
+			resetHelpVersion(sub)
+		}
+	}
+	resetHelpVersion(RootCmd)
 	defer RootCmd.SetArgs([]string{})
 	err := RootCmd.Execute()
 	return buf.String(), err

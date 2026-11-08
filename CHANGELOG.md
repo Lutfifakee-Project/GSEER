@@ -3,6 +3,120 @@
 All notable changes per release.  Format: Keep-a-Changelog-ish, newest
 first.  Versions follow semver (three-component).
 
+## [v0.2.0] — Hardened Self-Hosted Readiness
+
+The hardened deployment model owner-approved as OD-1…OD-7 (Revision
+6.7.2) lands in the binary, with the release-quality verification round
+(fresh installs, fresh-clone reproducibility, PostgreSQL 16.15 + 17.2
+matrices, real-binary E2E).  No security boundary is weakened; the
+least-privilege direction stays one-way.
+
+### Added
+
+- **Migration 0016 — suppression policy hardening (pinned, hash-enforced).**
+  The `gseer_policy` enforcement layer: refusal-first guard (OD-3),
+  SECURITY DEFINER policy functions, statement-level advisory lock
+  (GSER/POL1 keys, OD-6), `fn_check_asset_suppression` v2 backstop.
+  Versions 0007–0015 stay permanently reserved (OD-4).  The pinned
+  Rev 6.7.2 artifacts are embedded byte-for-byte
+  (`internal/storage/migrations/`, `deploy/sql/`) and their SHA-256
+  hashes are enforced by the test suite (`artifacts_test.go`).
+- **Migration 0017 — search safe-casts (GAP-1 mandate).**
+  `gseer_safe_int` / `gseer_safe_timestamptz` helpers and rebuilt
+  `latest_http` / `latest_tls` views: malformed evidence can no longer
+  break search/facets/export/host (a malformed value yields an empty
+  cell instead of a query failure).  Up/down round-trip equality is
+  automated.
+- **Hardened setup — the deployment order in one command.**
+  `gseer setup --self-hosted` now runs bootstrap → migrate → runtime
+  grants → privilege audit (steps 1–4 of the approved sequence, in that
+  order because the 0016 guard requires the roles), provisions the
+  `gseer_app` runtime password (generated, printed once; or
+  deterministic via `--runtime-password-env`; rotate via
+  `--reset-runtime-password`), and refuses the deployment with the
+  complete failure list when the audit fails.
+- **Runtime credential switch (M-B).** `database.runtime_dsn` /
+  `GSEER_DB_RUNTIME_DSN`: the server serves traffic ONLY as the
+  least-privilege `gseer_app` credential; CLI data-plane commands
+  prefer it and print an explicit notice when falling back to the
+  operator credential (never silently).  Suppression writes go through
+  the 0016 policy functions in every path (direct DML is refused by the
+  policy gate with `GSUP2`).
+- **In-binary fail-closed privilege audit (M-C, OD-5).**
+  `gseer server start` runs the embedded audit under `gseer_app`
+  BEFORE the port binds: a missing grant, unsafe role attribute, or
+  escalation path in the membership closure refuses startup with the
+  full failure list (exit 5).  A runtime-credential identity check
+  refuses to serve as anyone other than `gseer_app` (exit 5).  No
+  bypass exists.  `gseer doctor` runs the same audit as a check.
+- **`gseer host <ip|hostname|domain>`** — read-only host inspection:
+  the asset row (kind/value/ASN/geo/sources/first-last seen), every
+  service with its latest HTTP/TLS/fingerprint state, and the
+  observation provenance breakdown; `-o json` for machines.
+- **PostgreSQL 16+ minimum (OD-7).** Enforced by `gseer setup` and
+  `gseer doctor` (`minimum 16`); the compose stack keeps
+  `postgres:17-alpine`.
+- **Docker full stack, hardened (EU-2).** The server container
+  provisions itself (bootstrap → migrate → grants → audit) and serves
+  under `gseer_app`; the generated `.env` carries a dedicated
+  `GSEER_APP_PASSWORD`; no container ever serves as the operator.
+
+### Fixed
+
+- **Collected assets carry source provenance.** Passive collectors now
+  stamp the source name onto the asset row (the fixture loader already
+  did): the `sources` facet, search_index projections, and `gseer host`
+  reflect collector data instead of an empty array (a documented v0.1.0
+  limitation, now closed with a regression test).
+- **Honest migration counters.** `migrations: N applied` counts FILES,
+  not version numbers — under the reserved 0007–0015 range the v0.1.0 →
+  v0.2.0 upgrade applies 2 files to head 17 (not "11 applied").
+- **Test-suite hermeticity and order independence.**
+  `TestSetupSelfHostedFreshMachineContract` no longer depends on the
+  absence of a local PostgreSQL (machines running one — CI included —
+  made it fail); `executeRoot` resets cobra's per-command help/version
+  flags so the banner/help tests no longer poison the E2E tests below
+  them (the same shared-state class closed for command flags earlier).
+- Integration harnesses bootstrap the hardened roles before migrating,
+  derive their per-test DSNs from `GSEER_TEST_PG_ADMIN` (the suite now
+  runs unchanged against any instance — the PG16/PG17 matrix), and the
+  v0.1.0 → v0.2.0 upgrade path is an automated test
+  (`TestV010ToV020UpgradePath`).
+
+### Documentation (this release)
+
+- `docs/DEPLOYMENT.md` rewritten around the implemented model (the
+  SPECIFIED→VERIFIED gap is closed): credential model, the automated
+  hardened sequence, what the audit checks, refusal table with safe
+  repairs, the no-bypass rationale, exit-code table (5 = security
+  refusal), and the hash-pinned artifact register.
+- `docs/QUICKSTART.md` rewritten as the complete verified v0.2.0
+  workflow (build → compose → hardened setup → runtime credential →
+  doctor → scope → collection → GQL search → `gseer host` → hardened
+  server start → health → shutdown) with troubleshooting picks.
+- README, INSTALL, `.env.example`, DOCKER, UPDATE, and ROADMAP aligned
+  to the v0.2.0 behavior; every documented command executed against the
+  real binary on PostgreSQL 16.15 and 17.2.
+
+### Verified (release evidence)
+
+- Unit suites: 19 packages green.  Integration suites (build tag
+  `integration`): green on PostgreSQL 16.15 **and** 17.2 (fresh
+  databases per test; the matrix covers setup, migration up/down,
+  suppression policy paths, search/planner/facets, export, fixture
+  round-trip, collect/redrive).
+- Real-binary E2E on both majors: hardened setup → doctor (6 PASS,
+  0 FAIL) → fixtures → search/facets/export → suppress add/re-add/
+  list/remove → `gseer host` (table + JSON) → authorized DNS collection
+  → server start (audit under `gseer_app`) → health → graceful stop.
+- Negative security tests (real binary): revoked grant → startup
+  refused exit 5 with the GSUPF failure; decoy `INSERT` grant on
+  `public.suppressions` → caught twice (ACL walk + point check), exit 5;
+  operator DSN in `runtime_dsn` → `E_RUNTIME_CREDENTIAL_MISMATCH`,
+  exit 5.
+- Reproducible build: two fresh-clone builds produce byte-identical
+  binaries (`-trimpath`, same toolchain).
+
 ## [v0.1.0] — First Useful Self-Hosted (Phase 3)
 
 Milestones M18–M24.  No breaking changes to the v0.0.2 surface.

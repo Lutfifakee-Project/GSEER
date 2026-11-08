@@ -48,13 +48,13 @@ Everything runs on your machine: your database, your data, your rules.
 | --- | --- |
 | Go | 1.26+ (only for building from source) |
 | Docker + Compose | for the bundled PostgreSQL 17 (recommended path) |
-| PostgreSQL | 15+ if you run your own (v0.1.0 is verified against 17) |
+| PostgreSQL | **16+** if you run your own (OD-7 floor enforced by `gseer setup` and `gseer doctor`; verified end-to-end on **16.15 and 17.2** — `docs/DEPLOYMENT.md`) |
 | OS | Linux / macOS / Windows |
 
-> v0.1.0 is a **source-only self-hosted release**. The artifact is the
-> source archive `GSEER-v0.1.0-source.zip` together with its SHA-256
-> checksum sidecar `GSEER-v0.1.0-source.zip.sha256`. This source archive
-> is the **only** downloadable release artifact for v0.1.0. There are no
+> v0.2.0 is a **source-only self-hosted release**. The artifact is the
+> source archive `GSEER-v0.2.0-source.zip` together with its SHA-256
+> checksum sidecar `GSEER-v0.2.0-source.zip.sha256`. This source archive
+> is the **only** downloadable release artifact for v0.2.0. There are no
 > prebuilt platform binaries, no binary packages, and no published
 > Docker image for this release. Build from source (below), or build the
 > Docker image locally via the `Dockerfile`. Docker is the easiest way
@@ -68,9 +68,9 @@ Copy-paste, in order. Total time: a few minutes.
 # 1. Build the binary (requires Go 1.26+)
 git clone https://github.com/Lutfifakee-Project/GSEER.git
 cd GSEER
-make build VERSION=v0.1.0
+make build VERSION=v0.2.0
 ./bin/gseer version
-#   → gseer v0.1.0
+#   → gseer v0.2.0
 #   (optional: sudo cp bin/gseer /usr/local/bin/ so `gseer` is on PATH)
 
 # 2. Write the compose file + a .env with a random database password
@@ -80,25 +80,36 @@ gseer setup --self-hosted --with-compose
 docker compose up -d db
 docker compose ps db          # wait until it shows "healthy"
 
-# 4. Initialize the schema — all migrations, zero manual SQL
+# 4. Hardened setup — bootstrap → migrate → grants → audit, one command
 gseer setup --self-hosted --db-url "$(grep '^GSEER_DSN=' .env | cut -d= -f2-)"
-#   → [ ok ] migrations: 6 applied, schema at head v6
+#   → [ ok ] migrations: 8 applied, schema at head v17
+#   → [ ok ] privilege audit: PASSED (fail-closed gate, OD-5)
+#   → prints GSEER_DB_RUNTIME_DSN (the gseer_app credential) EXACTLY ONCE
 
-# 5. Verify the installation
+# 5. Make this shell self-hosted (setup does not rewrite your shell)
+export GSEER_PROFILE=self-hosted
+export GSEER_DB_DSN="$(grep '^GSEER_DSN=' .env | cut -d= -f2-)"
+export GSEER_DB_RUNTIME_DSN='postgres://gseer_app:<from step 4>@127.0.0.1:5432/gseer?sslmode=disable'
+#   Without this, the CLI defaults to the client profile and doctor
+#   fails with E_CONFIG_REQUIRED (client.endpoint missing).  The server
+#   additionally REQUIRES the runtime credential — it never serves
+#   traffic under the operator credential (docs/DEPLOYMENT.md).
+
+# 6. Verify the installation
 gseer doctor
-#   → 5 PASS, 0 FAIL.  (The index is reported as EMPTY — that is honest.)
+#   → 6 PASS, 0 FAIL.  (The index is reported as EMPTY — that is honest.)
 
-# 6. Your first search (a fresh install has an empty index)
+# 7. Your first search (a fresh install has an empty index)
 gseer search 'port==443'
 #   → The index is empty — no assets have been ingested yet.
 
-# 7. (Optional) load the labeled SYNTHETIC evaluation corpus so you can
+# 8. (Optional) load the labeled SYNTHETIC evaluation corpus so you can
 #    try search/export/facets without collecting anything
 gseer setup --load-fixtures          # asks for a y/yes confirmation
 gseer search 'port==443 && title CONTAINS "login"'
 #   Every surface labels this data: SYNTHETIC EVALUATION DATA.
 
-# 8. Start the dashboard + API (runs in the foreground)
+# 9. Start the dashboard + API (runs the privilege audit first, in the foreground)
 gseer server start
 #   Dashboard:  http://127.0.0.1:8443/
 #   API health: http://127.0.0.1:8443/api/v1/health
@@ -150,15 +161,16 @@ gseer export 'port == 443' --format ndjson --out -   # stdout; stats go to stder
 ## CLI Command Reference
 
 Run `gseer --help` for the live list; `gseer <command> --help` documents
-every flag. Verified against v0.1.0:
+every flag. Verified against v0.2.0:
 
 | Command | Purpose |
 | --- | --- |
 | `gseer search <query>` | Search the index with GQL (`--facets`, `--mode`, `--limit`, `--sort`, `--explain`, `--validate`, `-o json`) |
+| `gseer host <ip\|hostname\|domain>` | Read-only host inspection: asset + services + latest HTTP/TLS/fingerprints + provenance (`-o json`) |
 | `gseer export <query>` | Stream results as JSON / CSV / NDJSON (`--format`, `--out`, `--max`) |
-| `gseer setup` | Configure client mode, or `--self-hosted` to provision (`--with-compose [--full]`, `--load-fixtures`, `--purge-fixtures`) |
-| `gseer doctor` | Diagnose config / DB / schema / index health (read-only) |
-| `gseer server start\|status\|stop` | Manage the local API + dashboard |
+| `gseer setup` | Configure client mode, or `--self-hosted` to run the hardened deployment order (`--with-compose [--full]`, `--load-fixtures`, `--purge-fixtures`, `--reset-runtime-password`) |
+| `gseer doctor` | Diagnose config / DB / schema / index / privilege-audit health (read-only) |
+| `gseer server start\|status\|stop` | Manage the local API + dashboard (start runs the fail-closed privilege audit before binding) |
 | `gseer source add\|list\|enable\|disable` | Register and manage passive data sources |
 | `gseer collect run\|status\|redrive` | Run collectors; inspect jobs; re-drive dead letters |
 | `gseer suppress add\|list\|remove` | Manage the suppression policy |
@@ -257,8 +269,9 @@ annotated set.
 | Variable | Meaning |
 | --- | --- |
 | `GSEER_PROFILE` | `client` (default) or `self-hosted` |
-| `GSEER_DB_DSN` | Full PostgreSQL DSN (overrides the components below) |
-| `GSEER_DB_HOST` / `GSEER_DB_PORT` / `GSEER_DB_USER` / `GSEER_DB_PASSWORD` / `GSEER_DB_NAME` / `GSEER_DB_SSLMODE` | DSN components |
+| `GSEER_DB_DSN` | Full PostgreSQL DSN for the **operator** credential (overrides the components below) |
+| `GSEER_DB_RUNTIME_DSN` | Full PostgreSQL DSN for the **runtime** credential `gseer_app` (required by `server start`; printed once by setup) |
+| `GSEER_DB_HOST` / `GSEER_DB_PORT` / `GSEER_DB_USER` / `GSEER_DB_PASSWORD` / `GSEER_DB_NAME` / `GSEER_DB_SSLMODE` | DSN components (operator credential) |
 | `GSEER_LISTEN` | Server bind address (default `127.0.0.1:8443`; non-loopback requires `GSEER_TOKEN`) |
 | `GSEER_TOKEN` | API token for the REST API (`Authorization: Bearer …`) |
 | `GSEER_LOG_LEVEL` / `GSEER_LOG_FORMAT` | `debug\|info\|warn\|error` / `text\|json` |
@@ -274,14 +287,19 @@ random database password — never commit a real `.env`.
 
 | Symptom | What it means / what to do |
 | --- | --- |
-| `E_CONFIG_REQUIRED: client.endpoint …` | You are in the client profile. For local use run with `--self-hosted` (it implies the profile). |
+| `E_CONFIG_REQUIRED: client.endpoint …` right after `setup --self-hosted` | Setup provisioned the database; your shell is still in the `client` profile. Export the handoff: `export GSEER_PROFILE=self-hosted`, `export GSEER_DB_DSN="$(grep '^GSEER_DSN=' .env | cut -d= -f2-)"` and the runtime DSN from setup (Quickstart step 4–5). |
+| `API_E_UNAUTHORIZED` (client search, exit 5) | The server requires a Bearer token and the CLI client cannot present one — query with `curl -H "Authorization: Bearer $GSEER_TOKEN" …`, or from inside the compose network. |
+| `E_RUNTIME_CREDENTIAL_REQUIRED` on `server start` (exit 3) | No runtime credential configured. `gseer setup --self-hosted` provisions `gseer_app` and prints `GSEER_DB_RUNTIME_DSN` once — export it. |
+| `E_RUNTIME_CREDENTIAL_MISMATCH` (exit 5) | `database.runtime_dsn` connects as something other than `gseer_app` (e.g. the operator credential). Point it at the gseer_app credential — the server never serves traffic under another identity. |
+| `E_PRIVILEGE_AUDIT_FAILED` (exit 5) | The fail-closed audit found a real deployment problem (missing grants, unsafe roles, escalation path). Fix the deployment per `docs/DEPLOYMENT.md` §3.4 — never grant `gseer_app` more privileges to "make it pass". |
+| `E_BOOTSTRAP` during setup | The operator credential could not create/validate the hardened roles. Run setup with the database-owner credential, or remediate the named role state. |
 | `E_DB_UNREACHABLE: cannot reach PostgreSQL` | The database is not running. `docker compose up -d db`, then `docker compose ps db` until healthy. |
 | `E_CONFIG_INSECURE: non-loopback bind requires a token` | Set `GSEER_TOKEN` (or `server.token`) before binding a non-loopback address. |
 | `E_SOURCE_TERMS` when enabling/running a source | That connector's provider terms are not cleared for automated collection (`docs/SOURCES.md`). This is a policy gate, not a bug. |
 | `E_QUERY_*` on search/facets | The GQL did not validate. The error names the position and a `Try:` fix; `gseer search '<q>' --validate` checks without touching the DB. |
 | `E_UPDATE_UNSIGNED` | The update manifest has no valid signature against the embedded key. It is refused — see `docs/UPDATE.md`. |
 | Doctor reports `HINT index: EMPTY` | Normal on a fresh install. Load fixtures for evaluation, or register a source and run `gseer collect run`. |
-| Migration failed mid-startup | `gseer db migrate status`, then `gseer db migrate diagnose`; `force` exists for recovery and asks for confirmation. |
+| Migration failed mid-setup | `gseer db migrate status`, then `gseer db migrate diagnose`; `force` exists for recovery and asks for confirmation. |
 | `server start` says the port is taken | Another instance is running (`gseer server status`) or something else uses 8443 — change `GSEER_LISTEN`. |
 
 ## Security, Limitations, and License
@@ -294,8 +312,15 @@ random database password — never commit a real `.env`.
   release; invoking it exits 64.
 - **Nothing runs uninvoked** — no daemon, no scheduler. Every collection
   run is an explicit operator command, gated by the terms register.
+- **Least-privilege runtime, fail-closed** — the server serves traffic
+  ONLY as the least-privilege `gseer_app` credential, and the fail-closed
+  effective-privilege audit refuses startup (exit 5) unless the
+  deployment's roles/grants/ownership are exactly the approved matrix.
+  There is no bypass, flag, or override (`docs/DEPLOYMENT.md`).
 - **Suppression is enforced twice** — in every ingestion path AND by a
-  database trigger that refuses suppressed writes if any path forgets.
+  database trigger that refuses suppressed writes if any path forgets;
+  after migration 0016 all suppression writes go through the
+  `gseer_policy` SECURITY DEFINER functions, never direct DML.
 - **Loopback by default** — the DB binds `127.0.0.1` only (compose full
   stack: no host port at all); the server binds loopback and a
   non-loopback bind requires a token; security headers on every
@@ -312,7 +337,9 @@ random database password — never commit a real `.env`.
 - **Passive facts are asset-level.** A DNS answer or a certificate-log
   entry proves an identifier was published; it never invents a port, a
   banner, or an HTTP title. Service-level rows appear only from
-  evidence that actually carries them.
+  evidence that actually carries them; DNS-discovered IPs do not mirror
+  the resolving name into the asset's hostname/domain columns (the name
+  is on the observation's evidence — `docs/DEPLOYMENT.md` §7).
 - **RDAP and crt.sh/CT are disabled** until their providers' terms are
   reviewed and approved. The enforcement is in code, not just docs.
 - **Fingerprint coverage is deliberately conservative** — the seed set
@@ -332,9 +359,10 @@ enforces it.
 
 - [`docs/QUICKSTART.md`](docs/QUICKSTART.md) — the canonical fresh-install workflow
 - [`docs/INSTALL.md`](docs/INSTALL.md) — install methods, checksums, build from source
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — credential model, hardened startup, the fail-closed privilege audit
 - [`docs/DOCKER.md`](docs/DOCKER.md) — full stack: startup, upgrade, backup/restore, recovery
+- [`docs/UPDATE.md`](docs/UPDATE.md) — the signed-update chain, the v0.1.0 → v0.2.0 upgrade path, key ceremony, recovery
 - [`docs/SOURCES.md`](docs/SOURCES.md) — passive data-source review register (terms verdicts)
 - [`docs/RULES.md`](docs/RULES.md) — fingerprint rule format, confidence tiers, contributions
-- [`docs/UPDATE.md`](docs/UPDATE.md) — the signed-update chain, key ceremony, recovery
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — release register (what is live per release)
 - [`CHANGELOG.md`](CHANGELOG.md) — per-release changes

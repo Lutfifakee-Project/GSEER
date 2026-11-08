@@ -57,13 +57,16 @@ func registerDoctorCmd(root *cobra.Command) {
 Reports PASS/FAIL/HINT with a fix line for each check (QS-4).
 Wired:
   - config validity
-  - DB reachable + PG version compatible (PostgreSQL 15+, PD-8)
+  - DB reachable + PG version compatible (PostgreSQL 16+, OD-7)
   - migrations at head (dirty state → gseer db migrate diagnose)
   - binary version / OS-arch / SHA-256 (self-reported; compare with the
     corresponding published release checksum when a binary release is
     available)
   - index contents: EMPTY | counts | fixture-labeled honesty label
   - server reachability (client profile: probes the configured endpoint)
+  - runtime credential + fail-closed privilege audit (self-hosted, v0.2.0
+    OD-5: PASS means gseer server start may bind; FAIL names the failures;
+    HINT when the runtime credential is not provisioned yet)
 
 Doctor MUST NOT show a generic "healthy" that hides an empty or fixture-
 filled index (QS-4 normative).  Doctor is read-only: it never migrates.`,
@@ -131,6 +134,11 @@ filled index (QS-4 normative).  Doctor is read-only: it never migrates.`,
 				report(r.Name, string(r.Outcome), r.Detail, r.Fix, r.Err)
 			}
 
+			// Hardened runtime credential + fail-closed privilege
+			// audit (v0.2.0 OD-5/M-B/M-C).  Read-only like every
+			// doctor check.
+			reportRuntimeCredentialCheck(cmd, cfg, report)
+
 			// Index contents (QS-4 honesty): empty vs counts vs fixture-labeled.
 			reportIndexCheck(cmd, cfg, report)
 
@@ -167,6 +175,39 @@ func orUnknown(s string) string {
 		return "unknown"
 	}
 	return s
+}
+
+// reportRuntimeCredentialCheck runs the hardened v0.2.0 check: when the
+// gseer_app runtime credential is configured, the fail-closed effective-
+// privilege audit runs UNDER THAT CREDENTIAL (every catalog it consults
+// is readable by non-superusers, so a pass simultaneously proves the
+// deployment state and the credential's own reach — OD-5).  Without the
+// runtime credential the check is an honest HINT (doctor never pretends
+// an unprovisioned deployment is hardened).
+func reportRuntimeCredentialCheck(cmd *cobra.Command, cfg *config.Config, report func(name, outcome, detail, fix string, err error)) {
+	runtimeDSN, explicit := cfg.Database.RuntimeCredentialDSN()
+	if !explicit {
+		report("runtime credential", "HINT",
+			"gseer_app runtime credential is not configured (database.runtime_dsn / GSEER_DB_RUNTIME_DSN)",
+			"gseer server start requires it — provision with: gseer setup --self-hosted", nil)
+		return
+	}
+	rep, err := postgres.RunPrivilegeAudit(commandContext(cmd), runtimeDSN)
+	if err != nil {
+		report("privilege audit", "FAIL",
+			"the fail-closed privilege audit could not run under the runtime credential",
+			"check database.runtime_dsn; an audit that cannot run is not an audit that passed", err)
+		return
+	}
+	if !rep.Passed {
+		report("privilege audit", "FAIL",
+			fmt.Sprintf("the fail-closed privilege audit found %d failure(s): %s",
+				len(rep.Failures), strings.Join(rep.Failures, " | ")),
+			"fix the deployment, never the check — docs/DEPLOYMENT.md §3.5 (do NOT grant gseer_app more privileges)", nil)
+		return
+	}
+	report("privilege audit", "PASS",
+		"fail-closed effective-privilege audit passed under the gseer_app runtime credential (OD-5)", "", nil)
 }
 
 // reportIndexCheck reports the QS-4 index-contents honesty check:

@@ -35,6 +35,15 @@
 //	0006_collection       collector-side bookkeeping: collection_jobs,
 //	                      source_checkpoints, ingestion_dead_letter,
 //	                      scopes (M14; scopes itself stays P2-unused)
+//	0016_suppression_policy_hardening
+//	                      the pinned Rev 6.7.2 gseer_policy enforcement
+//	                      layer (hash-pinned; versions 0007–0015 are
+//	                      permanently RESERVED per OD-4 — they must
+//	                      never be created)
+//	0017_search_safe_casts
+//	                      safe-cast helpers + rebuilt latest_http /
+//	                      latest_tls views (GAP-1 mandate; malformed
+//	                      evidence can no longer break search)
 //
 // The schema_migrations table is owned by the golang-migrate driver and
 // is NEVER created or modified by an application migration.

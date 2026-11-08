@@ -70,6 +70,10 @@ func expSetup(t *testing.T) (*search.Service, *pgxpool.Pool, string) {
 	_ = admin.Close(ctx)
 	testDSN := strings.Replace(dsn, "/postgres?", "/"+name+"?", 1)
 
+	// v0.2.0: bootstrap roles before the hardened migration set.
+	if _, err := postgres.BootstrapRoles(ctx, testDSN); err != nil {
+		t.Fatalf("BootstrapRoles: %v", err)
+	}
 	if _, _, err := postgres.RunMigrations(testDSN, 5000); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

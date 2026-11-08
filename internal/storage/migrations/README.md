@@ -38,3 +38,24 @@ and `gseer server start`.  Users never hand-run SQL (SPEC-05 §1).
    `source_checkpoints`, `ingestion_dead_letter`, `scopes`,
    `collection_jobs`, `suppressions`.  `suppressions` MUST land before
    any first probe (v0.0.2 release gate).
+
+## Inventory (v0.2.0)
+
+| Version | Name | Purpose | Status |
+| --- | --- | --- | --- |
+| 0001 | `0001_core` | `assets`, `services`, `observations`, `data_sources` + indexes | shipped v0.1.0 |
+| 0002 | `0002_helper_views` | `latest_http`, `latest_tls`, `latest_fingerprints` | shipped v0.1.0 |
+| 0003 | `0003_search_index` | `search_index` union view (planner target) | shipped v0.1.0 |
+| 0004 | `0004_search_indexes` | evidence-driven supporting indexes | shipped v0.1.0 |
+| 0005 | `0005_suppressions` | suppression rules + audit surface + DB backstop v1 | shipped v0.1.0 |
+| 0006 | `0006_collection` | `collection_jobs`, `source_checkpoints`, `ingestion_dead_letter`, `scopes` | shipped v0.1.0 |
+| 0007–0015 | — | **permanently reserved (OD-4); no migration will ever exist** | RESERVED |
+| 0016 | `0016_suppression_policy_hardening` | `gseer_policy` enforcement layer (hash-pinned Rev 6.7.2 artifact; refusal-first guard; SECURITY DEFINER policy functions; `fn_check_asset_suppression` v2) | v0.2.0 — PINNED, do not edit |
+| 0017 | `0017_search_safe_casts` | safe-cast helpers + rebuilt `latest_http`/`latest_tls` (GAP-1 mandate; hash-pinned) | v0.2.0 — PINNED |
+
+Pinned artifacts (0016 pair, 0017 pair, and the three `deploy/sql`
+scripts) carry registered SHA-256 hashes enforced by
+`artifacts_test.go`.  Suppression writes go through the
+`gseer_policy.suppression_*` SECURITY DEFINER functions after 0016 —
+direct DML on `public.suppressions` is refused by the policy gate
+(ERRCODE GSUP2).

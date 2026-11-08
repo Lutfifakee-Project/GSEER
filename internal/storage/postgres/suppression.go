@@ -108,6 +108,16 @@ type SuppressInput struct {
 // it with its database id.  existed=true when an identical (kind, value)
 // rule was already present — the existing row is returned unchanged
 // (idempotent re-adds are not audit events).
+//
+// v0.2.0 policy path (migration 0016): direct DML on public.suppressions
+// is refused by the gseer_policy statement trigger (ERRCODE GSUP2) for
+// EVERY role, so the write goes through the SECURITY DEFINER function
+// gseer_policy.suppression_insert.  The call runs in ONE transaction
+// that first takes the SAME advisory lock the 0016 statement trigger
+// takes (pg_advisory_xact_lock(0x47534552, 0x504F4C31) — "GSER"/"POL1",
+// OD-6 keys), which serializes concurrent rule mutations and keeps the
+// existed determination exact (a concurrent re-add observes the winner's
+// committed row instead of racing past it).
 func (s *Store) AddSuppression(ctx context.Context, in SuppressInput) (rule suppress.Rule, existed bool, err error) {
 	if !suppress.ValidateKind(in.Kind) {
 		return suppress.Rule{}, false, newDBError(CodeDBUsage, "invalid suppression kind").
@@ -120,19 +130,49 @@ func (s *Store) AddSuppression(ctx context.Context, in SuppressInput) (rule supp
 			withWhy(err.Error()).
 			withNext("fix the value; the stored rule must be canonical")
 	}
-	row := s.pool.QueryRow(ctx, `
-INSERT INTO suppressions (kind, value, reason, created_by, expires_at)
-VALUES ($1, $2, $3, $4, $5)
-ON CONFLICT (kind, value) DO UPDATE SET kind = EXCLUDED.kind
-RETURNING id, kind, value, reason, created_by, created_at, expires_at, enabled,
-          (xmax <> 0) AS existed`,
-		string(in.Kind), value, in.Reason, in.CreatedBy, in.ExpiresAt)
+
 	var r suppress.Rule
-	var expires *time.Time
-	if err := row.Scan(&r.ID, &r.Kind, &r.Value, &r.Reason, &r.CreatedBy, &r.CreatedAt, &expires, &r.Enabled, &existed); err != nil {
+	err = pgx.BeginFunc(ctx, s.pool, func(tx pgx.Tx) error {
+		// Serialize with every other suppression mutation (the 0016
+		// statement trigger takes the same key inside its own statement;
+		// per-transaction advisory locks are reentrant, so the trigger's
+		// PERFORM inside THIS transaction is a no-op wait).
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(1196639570, 1347374129)`); err != nil {
+			return err
+		}
+
+		// Existence first: a re-add returns the existing row unchanged
+		// and writes nothing (idempotent re-adds are not audit events).
+		row, existing, serr := selectSuppressionByKey(ctx, tx, string(in.Kind), value)
+		if serr != nil {
+			return serr
+		}
+		if existing {
+			r = row
+			existed = true
+			return nil
+		}
+
+		var id int64
+		if err := tx.QueryRow(ctx,
+			`SELECT gseer_policy.suppression_insert($1, $2, $3, $4, $5, TRUE)`,
+			string(in.Kind), value, in.Reason, in.CreatedBy, in.ExpiresAt).Scan(&id); err != nil {
+			return err
+		}
+		final, found, ferr := selectSuppressionByID(ctx, tx, id)
+		if ferr != nil {
+			return ferr
+		}
+		if !found {
+			return fmt.Errorf("suppression_insert returned id %d but the row is not readable", id)
+		}
+		r = final
+		existed = false
+		return nil
+	})
+	if err != nil {
 		return suppress.Rule{}, false, err
 	}
-	r.ExpiresAt = expires
 	return r, existed, nil
 }
 
@@ -142,15 +182,64 @@ func (s *Store) ListSuppressions(ctx context.Context) ([]suppress.Rule, error) {
 	return s.LoadSuppressions(ctx)
 }
 
-// RemoveSuppression deletes rule id.  Returns false when the id does not
-// exist.  NOTE: removing a rule does NOT resurrect previously retracted
-// records — they were deleted with audit rows in suppression_applications.
+// RemoveSuppression deletes rule id via the 0016 policy function
+// (gseer_policy.suppression_delete).  Returns false when the id does not
+// exist (the function raises GSUP2 on zero rows — fail-closed, never a
+// silent zero-row success).  NOTE: removing a rule does NOT resurrect
+// previously retracted records — they were deleted with audit rows in
+// suppression_applications.
 func (s *Store) RemoveSuppression(ctx context.Context, id int64) (bool, error) {
-	tag, err := s.pool.Exec(ctx, `DELETE FROM suppressions WHERE id = $1`, id)
+	var rows int64
+	err := s.pool.QueryRow(ctx,
+		`SELECT gseer_policy.suppression_delete($1)`, id).Scan(&rows)
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "GSUP2" {
+			return false, nil // rule not found (the function's fail-closed zero-row contract)
+		}
 		return false, err
 	}
-	return tag.RowsAffected() > 0, nil
+	return rows > 0, nil
+}
+
+// selectSuppressionByKey reads one rule row by its natural key.
+func selectSuppressionByKey(ctx context.Context, q querier, kind, value string) (suppress.Rule, bool, error) {
+	rows, err := q.Query(ctx, `
+SELECT id, kind, value, reason, created_by, created_at, expires_at, enabled
+FROM suppressions WHERE kind = $1 AND value = $2`, kind, value)
+	if err != nil {
+		return suppress.Rule{}, false, err
+	}
+	defer rows.Close()
+	r, found, err := scanSuppression(rows)
+	return r, found, err
+}
+
+// selectSuppressionByID reads one rule row by id.
+func selectSuppressionByID(ctx context.Context, q querier, id int64) (suppress.Rule, bool, error) {
+	rows, err := q.Query(ctx, `
+SELECT id, kind, value, reason, created_by, created_at, expires_at, enabled
+FROM suppressions WHERE id = $1`, id)
+	if err != nil {
+		return suppress.Rule{}, false, err
+	}
+	defer rows.Close()
+	r, found, err := scanSuppression(rows)
+	return r, found, err
+}
+
+// scanSuppression scans at most one rule row from an open result set.
+func scanSuppression(rows pgx.Rows) (suppress.Rule, bool, error) {
+	for rows.Next() {
+		var r suppress.Rule
+		var expires *time.Time
+		if err := rows.Scan(&r.ID, &r.Kind, &r.Value, &r.Reason, &r.CreatedBy, &r.CreatedAt, &expires, &r.Enabled); err != nil {
+			return suppress.Rule{}, false, err
+		}
+		r.ExpiresAt = expires
+		return r, true, rows.Err()
+	}
+	return suppress.Rule{}, false, rows.Err()
 }
 
 // ---------------------------------------------------------------------------

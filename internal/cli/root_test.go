@@ -40,8 +40,8 @@ func TestRootHelpListsCommands(t *testing.T) {
 	help := buf.String()
 
 	// Every command listed in the root help's "Commands:" section must appear.
-// Cobra renders commands as single words (e.g. "search", "server", "source")
-// rather than the old static format ("search <query>", "server start", etc.).
+	// Cobra renders commands as single words (e.g. "search", "server", "source")
+	// rather than the old static format ("search <query>", "server start", etc.).
 	want := []string{
 		"search",
 		"setup",

@@ -220,6 +220,15 @@ func (r *Runner) pipeline(ctx context.Context, src postgres.DataSourceRow, batch
 		}
 		facts[i].Observation.SourceCursor = deliveryCursor(batch.Cursor, i)
 		facts[i].Observation.ID = observationID(src.ID, facts[i].Observation.SourceCursor)
+		// Source provenance on the ASSET row too (v0.2.0 fix): the
+		// fixture loader stamps Asset.Sources; collectors must do
+		// the same or the collected assets land with an empty
+		// sources array — invisible to the sources facet, to
+		// search_index projections, and to `gseer host`.  A
+		// connector-provided value (never set today) wins.
+		if len(facts[i].Asset.Sources) == 0 {
+			facts[i].Asset.Sources = []string{src.Name}
+		}
 	}
 
 	if err := r.ingestWithPoisonIsolation(ctx, facts, stats); err != nil {

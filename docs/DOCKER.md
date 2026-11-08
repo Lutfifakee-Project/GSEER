@@ -1,9 +1,13 @@
-# GSEER — Full Self-Hosted Docker Stack (v0.1.0)
+# GSEER — Full Self-Hosted Docker Stack (v0.2.0)
 
 The full stack is **two containers**: PostgreSQL 17 and the GSEER
 API + dashboard server.  Nothing else — no collector container (nothing
-collects uninvoked; collection is an explicit command), no init/migrate
-sidecar (migrations run automatically on server start, QS-7).
+collects uninvoked; collection is an explicit command).  The server
+container provisions itself with the hardened deployment order
+(bootstrap → migrate → runtime grants → privilege audit) and serves
+ONLY under the least-privilege `gseer_app` runtime credential — the
+audit and the runtime-identity gate refuse an unsafe deployment with
+exit 5 before any port binds (`docs/DEPLOYMENT.md`).
 
 ## 1. Startup (short workflow)
 
@@ -20,13 +24,18 @@ curl -s http://127.0.0.1:8443/api/v1/health           # {"status":"ok"}
 curl -s http://127.0.0.1:8443/api/v1/version
 ```
 
-Then use it:
+Then use it (the API requires the generated token):
 
 ```
 TOKEN=$(grep '^GSEER_TOKEN=' .env | cut -d= -f2-)
-gseer --server http://127.0.0.1:8443 --token "$TOKEN" search 'port == 443'
+curl -s -H "Authorization: Bearer $TOKEN" 'http://127.0.0.1:8443/api/v1/search?q=port%3D%3D443'
 # or the dashboard: http://127.0.0.1:8443/
 ```
+
+> The `gseer` client-profile CLI cannot present a Bearer header (no
+> token flag exists and its requests carry none), so a token-protected
+> server is queried over HTTP as above, or from inside the compose
+> network (below). Credential model details: `docs/DEPLOYMENT.md`.
 
 Or query from inside the network (no token needed on loopback inside
 the container):
@@ -52,8 +61,9 @@ docker compose -f docker-compose.full.yml exec server gseer setup --load-fixture
   *requires* the API token for any non-loopback bind
   (`E_CONFIG_INSECURE` otherwise); the generated `.env` carries a
   random token, and every client request sends it.
-- **`.env` holds both secrets** (database password + API token),
-  written `0600`, never overwritten by a re-run.
+- **`.env` holds all secrets** (database password + the `gseer_app`
+  runtime password + API token), written `0600`, never overwritten by a
+  re-run.
 - **Non-root runtime user** (uid 10001) in the image; no build tools in
   the final layer; `CGO_ENABLED=0` static binary.
 
@@ -68,10 +78,11 @@ git pull                                  # or fetch the new release source
 docker compose -f docker-compose.full.yml up -d --build
 ```
 
-Schema migrations are part of startup (QS-7): the new server binary
-applies pending migrations before listening.  Downgrade = restore the
-previous image AND the database backup taken before the upgrade
-(migrations are not auto-reversed).
+Schema migrations are part of the container's provisioning step (the
+hardened deployment order: bootstrap → migrate → grants → audit); the
+audit refuses an incomplete or unsafe schema before the server binds.
+Downgrade = restore the previous image AND the database backup taken
+before the upgrade (migrations are not auto-reversed).
 
 ## 4. Backup and restore
 

@@ -256,7 +256,10 @@ func localSearch(out io.Writer, cfg *config.Config, q search.Query, fr facetsReq
 	ctx, cancel := context.WithTimeout(context.Background(), budget)
 	defer cancel()
 
-	pool, err := pgxpool.New(ctx, cfg.Database.EffectiveDSN())
+	// Runtime data plane: prefer the least-privilege gseer_app
+	// credential; the fallback to the operator credential is explicit
+	// (runtimeCommandDSN), never silent.
+	pool, err := pgxpool.New(ctx, runtimeCommandDSN(out, cfg))
 	if err != nil {
 		printf(out, "E_DB_UNAVAILABLE: cannot open the database pool\nWhy: %v\nTry: check database.dsn in the config — gseer doctor\n", err)
 		exitWith(ExitUnavailable)

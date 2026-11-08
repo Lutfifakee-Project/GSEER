@@ -20,8 +20,16 @@ import "testing"
 
 // wantHead is the pinned migration head.  A new migration file is a
 // conscious schema change: bump this constant in the same commit (the
-// M13 suppression migration took the head from 4 to 5).
-const wantHead = 6
+// M13 suppression migration took the head from 4 to 5; the v0.2.0
+// mandatory set — pinned 0016 + GAP-1's 0017 — takes it from 6 to 17,
+// with 0007–0015 permanently reserved per OD-4).
+const wantHead = 17
+
+// wantFileCount is the number of embedded up-migration FILES — not the
+// head version.  Versions 0007–0015 are permanently reserved (OD-4),
+// so the applied-counter reports files (8) while the ledger version and
+// head stay 17.
+const wantFileCount = 8
 
 // TestHeadVersion — the embedded migration set's head version is
 // parsed from the highest NNNN prefix (unit; no database).
@@ -31,7 +39,7 @@ func TestHeadVersion(t *testing.T) {
 		t.Fatalf("HeadVersion error: %v", err)
 	}
 	if head != wantHead {
-		t.Errorf("HeadVersion = %d, want %d (0001_core, 0002_helper_views, 0003_search_index, 0004_search_indexes, 0005_suppressions)", head, wantHead)
+		t.Errorf("HeadVersion = %d, want %d (0001–0006 shipped v0.1.0; 0016 pinned; 0017 safe-casts; 0007–0015 reserved)", head, wantHead)
 	}
 }
 
@@ -40,10 +48,10 @@ func TestMigrationFiles(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MigrationFiles error: %v", err)
 	}
-	if len(names) != wantHead {
-		t.Fatalf("got %d migration files, want %d: %v", len(names), wantHead, names)
+	if len(names) != 8 {
+		t.Fatalf("got %d migration files, want 8 (0001–0006 + 0016 + 0017; the reserved 0007–0015 must never exist): %v", len(names), names)
 	}
-	want := []string{"0001_core.up.sql", "0002_helper_views.up.sql", "0003_search_index.up.sql", "0004_search_indexes.up.sql", "0005_suppressions.up.sql", "0006_collection.up.sql"}
+	want := []string{"0001_core.up.sql", "0002_helper_views.up.sql", "0003_search_index.up.sql", "0004_search_indexes.up.sql", "0005_suppressions.up.sql", "0006_collection.up.sql", "0016_suppression_policy_hardening.up.sql", "0017_search_safe_casts.up.sql"}
 	for i, w := range want {
 		if names[i] != w {
 			t.Errorf("names[%d] = %s, want %s", i, names[i], w)

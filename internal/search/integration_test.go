@@ -101,6 +101,11 @@ func sIntTestDB(t *testing.T) (string, func()) {
 func sIntSetup(t *testing.T) (*Service, func()) {
 	t.Helper()
 	dsn, dbCleanup := sIntTestDB(t)
+	// v0.2.0: bootstrap roles before the hardened migration set.
+	if _, err := postgres.BootstrapRoles(context.Background(), dsn); err != nil {
+		dbCleanup()
+		t.Fatalf("BootstrapRoles: %v", err)
+	}
 	if _, _, err := postgres.RunMigrations(dsn, 1001); err != nil {
 		dbCleanup()
 		t.Fatalf("migrate: %v", err)
@@ -124,6 +129,11 @@ func sIntSetup(t *testing.T) (*Service, func()) {
 func sIntEmptySetup(t *testing.T) (*Service, func()) {
 	t.Helper()
 	dsn, dbCleanup := sIntTestDB(t)
+	// v0.2.0: bootstrap roles before the hardened migration set.
+	if _, err := postgres.BootstrapRoles(context.Background(), dsn); err != nil {
+		dbCleanup()
+		t.Fatalf("BootstrapRoles: %v", err)
+	}
 	if _, _, err := postgres.RunMigrations(dsn, 1001); err != nil {
 		dbCleanup()
 		t.Fatalf("migrate: %v", err)

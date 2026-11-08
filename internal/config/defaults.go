@@ -60,9 +60,14 @@ const DefaultDecompressedCapBytes = 256 * 1024 // 256 KiB
 // NOT used by any v0.0.1 runtime code path.
 const DefaultDecompressedCapMaxBytes = 1024 * 1024 // 1 MiB
 
-// DefaultPostgresMajor (PD-8) — minimum supported PostgreSQL major version.
-// Used by v0.0.1: the doctor check (M3) verifies the server is >= 15.
-const DefaultPostgresMajor = 15
+// DefaultPostgresMajor (PD-8 as amended by OD-7) — minimum supported
+// PostgreSQL major version.  Used by the doctor check and the setup
+// provisioning floor.  v0.1.0 shipped with floor 15 (PD-8); v0.2.0
+// raises it to 16 (OD-7, OWNER APPROVED): the Rev 6.7.2 privilege model
+// (membership SET/INHERIT options in pg_auth_members, the closure-
+// walking audit, and the 0016/0017 migrations' floor guards) is only
+// expressible on PostgreSQL 16+.
+const DefaultPostgresMajor = 16
 
 // DefaultPostgresImage — the Compose-provisioned PostgreSQL image
 // (SPEC-02 §1: postgres:17-alpine).  Used by the `setup --with-compose`

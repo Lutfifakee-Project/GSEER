@@ -151,7 +151,7 @@ var sentinelErr = errors.New("sentinel write error")
 // failingOnceWriter fails on the first Write with sentinelErr, then writes
 // all subsequent bytes to the inner buffer.
 type failingOnceWriter struct {
-	inner *bytes.Buffer
+	inner  *bytes.Buffer
 	failed bool
 }
 

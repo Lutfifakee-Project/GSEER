@@ -143,3 +143,44 @@ anchor rotation can never strand an installation mid-update.
   (`E_UPDATE_VERSION`): a binary that cannot prove its version cannot
   prove an update is an upgrade.  Release builds stamp the version via
   `-ldflags` (Makefile).
+
+## 8. Upgrading a v0.1.0 deployment to v0.2.0 (bare-metal, EU-6)
+
+The signed-update channel is for BINARY updates; the v0.1.0 → v0.2.0
+upgrade is a source + schema upgrade.  The path is automated by the
+v0.2.0 `gseer setup --self-hosted` (it runs the full hardened order and
+is idempotent — re-running is always safe):
+
+1. **Backup** — `pg_dump -Fc` the v0.1.0 database (migrations are not
+   auto-reversed; the rollback is restore + previous binary).
+2. **Build v0.2.0** — `make build VERSION=v0.2.0`.
+3. **Run the hardened setup once** with the existing operator DSN:
+
+   ```bash
+   gseer setup --self-hosted --db-url "$GSEER_DB_DSN"
+   #   [ ok  ] PG version: 17 (minimum 16, OD-7)      ← PostgreSQL 16+ required (OD-7)
+   #   [boot] bootstrap: created role gseer_policy_owner / gseer_app …
+   #   [ ok  ] migrations: 2 applied, schema at head v17   ← exactly 0016 + 0017
+   #   [ ok  ] runtime credential: password set for gseer_app …
+   #   [ ok  ] privilege audit: PASSED (fail-closed gate, OD-5)
+   ```
+
+   The ledger goes `(6, false)` → `(17, false)`; 0007–0015 are
+   permanently reserved (OD-4) and are never created.  When the audit
+   fails, the output names every failure — repair the deployment
+   (`docs/DEPLOYMENT.md` §3.4), never the check.
+4. **Export the runtime credential** — the DSN printed in step 3
+   (`GSEER_DB_RUNTIME_DSN`).  The v0.2.0 server refuses to start
+   without it and refuses to serve as anything other than `gseer_app`.
+5. **Restart under v0.2.0** — stop the v0.1.0 process, start the v0.2.0
+   binary (`gseer server start`), verify `gseer doctor`
+   (`6 PASS, 0 FAIL`) and the health endpoint.
+
+**Rollback** = restore the backup + run the v0.1.0 binary on the
+unchanged `GSEER_DB_*` configuration (the v0.1.0 binary is unaffected
+by the new roles; its single-credential model keeps working).  The
+upgrade path is exercised automatically by
+`TestV010ToV020UpgradePath` (build tag `integration`): a real
+`(6, false)` ledger is upgraded through the exact pinned order and the
+runtime paths (suppression via the policy functions) are proven
+afterwards.

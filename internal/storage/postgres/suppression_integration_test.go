@@ -44,6 +44,13 @@ func supTestDB(t *testing.T) (*Store, *pgxpool.Pool, string) {
 	t.Helper()
 	dsn, cleanup := testDB(t)
 	t.Cleanup(cleanup)
+	// v0.2.0 hardened migrations: the 0016 refusal guard requires the
+	// bootstrap roles + D-47 membership to exist BEFORE any migration
+	// runs (cluster-wide roles; idempotent across the per-test DBs).
+	if _, err := BootstrapRoles(context.Background(), dsn); err != nil {
+		cleanup()
+		t.Fatalf("BootstrapRoles: %v", err)
+	}
 	if _, _, err := RunMigrations(dsn, lockTimeoutForTest()); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}

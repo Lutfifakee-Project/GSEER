@@ -111,6 +111,11 @@ func pIntTestDB(t *testing.T) (string, func()) {
 func pIntSetup(t *testing.T) (*pgxpool.Pool, func()) {
 	t.Helper()
 	dsn, dbCleanup := pIntTestDB(t)
+	// v0.2.0: bootstrap roles before the hardened migration set.
+	if _, err := postgres.BootstrapRoles(context.Background(), dsn); err != nil {
+		dbCleanup()
+		t.Fatalf("BootstrapRoles: %v", err)
+	}
 	if _, _, err := postgres.RunMigrations(dsn, 1001); err != nil {
 		dbCleanup()
 		t.Fatalf("RunMigrations: %v", err)

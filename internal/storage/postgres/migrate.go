@@ -155,13 +155,36 @@ func RunMigrations(rawDSN string, lockTimeoutMs int) (applied int, head uint, er
 
 	switch {
 	case before < 0:
-		applied = int(head) // fresh database: everything from 0 → head
+		// Fresh database: every embedded up-file applies.
+		applied = countMigrationFiles(head)
 	case uint(before) < head:
-		applied = int(head) - before
+		// Upgrade: count the FILES between the recorded version and head —
+		// NOT the version delta.  Versions 0007–0015 are permanently
+		// reserved (OD-4), so 6 → 17 is TWO files (0016, 0017); reporting
+		// "11 applied" would mislead the operator about what ran.
+		applied = len(pendingFiles(uint(before), head))
 	default:
 		applied = 0
 	}
 	return applied, head, nil
+}
+
+// countMigrationFiles returns the number of embedded up-migrations
+// (≤ head; under the reserved range this differs from head itself).
+func countMigrationFiles(head uint) int {
+	names, err := MigrationFiles()
+	if err != nil {
+		// HeadVersion already succeeded, so listing cannot fail; be honest
+		// with the version delta as a last resort.
+		return int(head)
+	}
+	n := 0
+	for _, name := range names {
+		if fileVersion(name) <= head {
+			n++
+		}
+	}
+	return n
 }
 
 // migrateVersion reads the recorded schema version by briefly opening

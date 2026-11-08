@@ -199,7 +199,7 @@ func TestSetupFixtureCLIRoundTrip(t *testing.T) {
 		"QS-6 fixture gate",
 		"Proceed? [y/N]",
 		"DB reachable at",
-		"migrations: 6 applied, schema at head v6", // M13/M14 took the head to 0006_collection
+		"migrations: 8 applied, schema at head v17", // v0.2.0 set: 0001–0006 + pinned 0016 + 0017 as FILES (0007–0015 reserved, OD-4)
 		"fixture source registered (data_sources id=",
 		// Per-fact counters: 7 facts upsert 4 distinct assets (3 facts hit
 		// an asset a sibling fact already inserted), 6 service-bearing facts
