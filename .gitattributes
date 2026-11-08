@@ -1,0 +1,19 @@
+# GSEER .gitattributes — SQL artifact line-ending determinism.
+#
+# The migration files (internal/storage/migrations/*.sql) and the
+# hardened-deployment scripts (deploy/sql/*.sql) are governance objects:
+# their SHA-256 hashes are pinned in the owner register and asserted
+# byte-for-byte by internal/storage/migrations/artifacts_test.go
+# (TestPinnedMigrationArtifactsMatchRegister /
+# TestPinnedDeploymentArtifactsMatchRegister).  go:embed reads these
+# files at BUILD time from the checked-out working tree, so a Windows
+# checkout with core.autocrlf=true converts LF to CRLF, the embedded
+# bytes drift from the pinned LF hashes, and the artifact tests fail.
+#
+# Forcing eol=lf makes Git check out every *.sql file with LF on every
+# platform, so the embedded bytes (and therefore the pinned hashes) are
+# deterministic across Linux and Windows.  No artifact content is
+# altered — only the checkout-time line-ending normalization is pinned.
+# The regression is pinned by TestPinnedArtifactsAreLFOnAllPlatforms in
+# artifacts_lf_test.go.
+*.sql eol=lf

@@ -255,6 +255,46 @@ type provisionResult struct {
 // Every step reports on out; the first failure stops before any later
 // step.  A failed privilege audit refuses the deployment with exit 5
 // (OD-5: no runtime traffic past a failed audit — there is no bypass).
+// provisionRuntimeCredential sets gseer_app's password when the role was
+// created here, on explicit rotation, or on deterministic
+// --runtime-password-env provisioning, and records the derived runtime
+// DSN on the result.  Extracted from provisionSelfHosted to keep that
+// function under the gocyclo gate; the error messages, wrapping, and
+// printf output are byte-identical to the inline original.
+func provisionRuntimeCredential(ctx context.Context, dsn string, res *provisionResult, resetRuntimePassword bool, runtimePasswordEnv string, out io.Writer) error {
+	if !res.roleAppCreated && !resetRuntimePassword && runtimePasswordEnv == "" {
+		return nil
+	}
+	var pw string
+	if runtimePasswordEnv != "" {
+		pw = os.Getenv(runtimePasswordEnv)
+		if pw == "" {
+			return fmt.Errorf("E_RUNTIME_PASSWORD_ENV: --runtime-password-env %q is empty or unset\n"+
+				"Why: deterministic provisioning needs the password present in the environment\n"+
+				"Try: set %s (e.g. in the compose .env) and re-run", runtimePasswordEnv, runtimePasswordEnv)
+		}
+	} else {
+		generated, gerr := generateRuntimePassword()
+		if gerr != nil {
+			return fmt.Errorf("E_RUNTIME_PASSWORD: cannot generate the gseer_app password: %s", gerr)
+		}
+		pw = generated
+	}
+	if serr := postgres.SetAppRolePassword(ctx, dsn, pw); serr != nil {
+		return fmt.Errorf("E_RUNTIME_PASSWORD: cannot set the gseer_app password: %s\n"+
+			"Why: the runtime credential needs a password before anything can log in as gseer_app\n"+
+			"Try: run as a credential that may ALTER ROLE, or set the password manually, then re-run with --reset-runtime-password", serr)
+	}
+	rdsn, berr := runtimeDSNFromOperator(dsn, postgres.RoleApp, pw)
+	if berr != nil {
+		printf(out, "[ ok  ] runtime credential: password set for %s (build the runtime DSN yourself — the operator DSN is not URL-shaped)\n", postgres.RoleApp)
+	} else {
+		res.runtimeDSN = rdsn
+	}
+	printf(out, "[ ok  ] runtime credential: password set for %s (rotate anytime: gseer setup --self-hosted --reset-runtime-password)\n", postgres.RoleApp)
+	return nil
+}
+
 func provisionSelfHosted(cmd *cobra.Command, cfg *config.Config, dsn string, resetRuntimePassword bool, runtimePasswordEnv string) (*provisionResult, error) {
 	out := cmd.OutOrStdout()
 	ctx := commandContext(cmd)
@@ -316,34 +356,8 @@ func provisionSelfHosted(cmd *cobra.Command, cfg *config.Config, dsn string, res
 	// 6. Runtime credential: set gseer_app's password when the role was
 	//    created here, on explicit rotation, or on deterministic
 	//    provisioning (--runtime-password-env) and hand off the DSN.
-	if res.roleAppCreated || resetRuntimePassword || runtimePasswordEnv != "" {
-		var pw string
-		if runtimePasswordEnv != "" {
-			pw = os.Getenv(runtimePasswordEnv)
-			if pw == "" {
-				return nil, fmt.Errorf("E_RUNTIME_PASSWORD_ENV: --runtime-password-env %q is empty or unset\n"+
-					"Why: deterministic provisioning needs the password present in the environment\n"+
-					"Try: set %s (e.g. in the compose .env) and re-run", runtimePasswordEnv, runtimePasswordEnv)
-			}
-		} else {
-			generated, gerr := generateRuntimePassword()
-			if gerr != nil {
-				return nil, fmt.Errorf("E_RUNTIME_PASSWORD: cannot generate the gseer_app password: %s", gerr)
-			}
-			pw = generated
-		}
-		if serr := postgres.SetAppRolePassword(ctx, dsn, pw); serr != nil {
-			return nil, fmt.Errorf("E_RUNTIME_PASSWORD: cannot set the gseer_app password: %s\n"+
-				"Why: the runtime credential needs a password before anything can log in as gseer_app\n"+
-				"Try: run as a credential that may ALTER ROLE, or set the password manually, then re-run with --reset-runtime-password", serr)
-		}
-		rdsn, berr := runtimeDSNFromOperator(dsn, postgres.RoleApp, pw)
-		if berr != nil {
-			printf(out, "[ ok  ] runtime credential: password set for %s (build the runtime DSN yourself — the operator DSN is not URL-shaped)\n", postgres.RoleApp)
-		} else {
-			res.runtimeDSN = rdsn
-		}
-		printf(out, "[ ok  ] runtime credential: password set for %s (rotate anytime: gseer setup --self-hosted --reset-runtime-password)\n", postgres.RoleApp)
+	if err := provisionRuntimeCredential(ctx, dsn, res, resetRuntimePassword, runtimePasswordEnv, out); err != nil {
+		return nil, err
 	}
 
 	// 7. Privilege audit (deployment step 4 — read-only, fail-closed).
@@ -390,13 +404,14 @@ func runSetupSelfHosted(cmd *cobra.Command, cfg *config.Config, dbURL string, fi
 	}
 
 	printf(out, "\nSelf-hosted mode ready (hardened model, Rev 6.7.2).\n")
-	if res.runtimeDSN != "" {
+	switch {
+	case res.runtimeDSN != "":
 		printf(out, "\nRuntime credential (gseer_app) — shown ONCE, store it now:\n")
 		printf(out, "  export GSEER_DB_RUNTIME_DSN='%s'\n", res.runtimeDSN)
 		printf(out, "  (the server requires this credential; it never serves traffic as the operator — docs/DEPLOYMENT.md)\n")
-	} else if res.roleAppCreated {
+	case res.roleAppCreated:
 		printf(out, "\nRuntime credential: gseer_app was created but the runtime DSN could not be derived from a non-URL operator DSN; construct it as postgres://%s:<password>@<host>:<port>/<db>?sslmode=…\n", postgres.RoleApp)
-	} else {
+	default:
 		printf(out, "\nRuntime credential: gseer_app already existed — its password lives in your secret channel.\n")
 		printf(out, "  Lost it? gseer setup --self-hosted --reset-runtime-password  (rotates and prints a new DSN)\n")
 	}

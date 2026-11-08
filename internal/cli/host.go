@@ -162,10 +162,7 @@ func runHost(cmd *cobra.Command, args []string) error {
 	if flags.output == "json" {
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
-		if jerr := enc.Encode(rep); jerr != nil {
-			return jerr
-		}
-		return nil
+		return enc.Encode(rep)
 	}
 	renderHostText(out, rep)
 	return nil
@@ -311,34 +308,7 @@ func renderHostText(out io.Writer, rep *hostReport) {
 		printf(out, "  (none — passive facts are asset-level; service rows need evidence that carries them)\n")
 	}
 	for _, s := range rep.Services {
-		printf(out, "  %d/%s %s", s.Port, s.Transport, s.Protocol)
-		if s.Product != "" {
-			printf(out, " · %s", s.Product)
-			if s.Version != "" {
-				printf(out, " %s", s.Version)
-			}
-		} else if s.Name != "" {
-			printf(out, " · %s", s.Name)
-		}
-		if s.HTTPStatus != nil {
-			printf(out, " · http %d", *s.HTTPStatus)
-			if s.HTTPTitle != "" {
-				printf(out, " %q", s.HTTPTitle)
-			}
-			if s.HTTPServer != "" {
-				printf(out, " (%s)", s.HTTPServer)
-			}
-		}
-		if s.TLSVersion != "" {
-			printf(out, " · tls %s", s.TLSVersion)
-		}
-		if len(s.Tech) > 0 {
-			printf(out, " · tech: %s", strings.Join(s.Tech, ", "))
-		}
-		if s.Stale {
-			printf(out, " · STALE")
-		}
-		printf(out, "\n")
+		renderHostService(out, s)
 	}
 
 	printf(out, "\nOBSERVATIONS: %d total", rep.Observations.Total)
@@ -354,6 +324,40 @@ func renderHostText(out io.Writer, rep *hostReport) {
 		printf(out, "  (no observations reference this asset)\n")
 	}
 	printf(out, "\nRead-only view of the local index — gseer search for cross-host queries.\n")
+}
+
+// renderHostService prints one service row of the HOST report.  Extracted
+// from renderHostText to keep that function under the gocyclo gate; the
+// bytes printed are byte-identical to the inline original.
+func renderHostService(out io.Writer, s hostService) {
+	printf(out, "  %d/%s %s", s.Port, s.Transport, s.Protocol)
+	if s.Product != "" {
+		printf(out, " · %s", s.Product)
+		if s.Version != "" {
+			printf(out, " %s", s.Version)
+		}
+	} else if s.Name != "" {
+		printf(out, " · %s", s.Name)
+	}
+	if s.HTTPStatus != nil {
+		printf(out, " · http %d", *s.HTTPStatus)
+		if s.HTTPTitle != "" {
+			printf(out, " %q", s.HTTPTitle)
+		}
+		if s.HTTPServer != "" {
+			printf(out, " (%s)", s.HTTPServer)
+		}
+	}
+	if s.TLSVersion != "" {
+		printf(out, " · tls %s", s.TLSVersion)
+	}
+	if len(s.Tech) > 0 {
+		printf(out, " · tech: %s", strings.Join(s.Tech, ", "))
+	}
+	if s.Stale {
+		printf(out, " · STALE")
+	}
+	printf(out, "\n")
 }
 
 // sortedHostSources returns the provenance names, count-desc then name.

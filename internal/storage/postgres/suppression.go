@@ -230,16 +230,20 @@ FROM suppressions WHERE id = $1`, id)
 
 // scanSuppression scans at most one rule row from an open result set.
 func scanSuppression(rows pgx.Rows) (suppress.Rule, bool, error) {
-	for rows.Next() {
-		var r suppress.Rule
-		var expires *time.Time
-		if err := rows.Scan(&r.ID, &r.Kind, &r.Value, &r.Reason, &r.CreatedBy, &r.CreatedAt, &expires, &r.Enabled); err != nil {
-			return suppress.Rule{}, false, err
-		}
-		r.ExpiresAt = expires
-		return r, true, rows.Err()
+	// At most one row is consumed (the function contract); a for loop
+	// that unconditionally returns on the first iteration read as an
+	// SA4004 defect, so the single-row scan is written as a guarded
+	// Next + Scan — same selection, same error surfacing.
+	if !rows.Next() {
+		return suppress.Rule{}, false, rows.Err()
 	}
-	return suppress.Rule{}, false, rows.Err()
+	var r suppress.Rule
+	var expires *time.Time
+	if err := rows.Scan(&r.ID, &r.Kind, &r.Value, &r.Reason, &r.CreatedBy, &r.CreatedAt, &expires, &r.Enabled); err != nil {
+		return suppress.Rule{}, false, err
+	}
+	r.ExpiresAt = expires
+	return r, true, rows.Err()
 }
 
 // ---------------------------------------------------------------------------
