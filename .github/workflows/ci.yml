@@ -22,7 +22,8 @@
 # fail-hard posture (the code is already unconditionally fatal).
 #
 # Least-privilege: permissions: contents: read. Actions pinned:
-# checkout@v4, setup-go@v5, golangci/golangci-lint-action@v9.3.0.
+# checkout@v4, setup-go@v5, golangci/golangci-lint-action@v9.3.0,
+# goreleaser/goreleaser-action@v2.9.1 (CLI pinned to v2.20.0).
 # govulncheck pinned to v1.9.0 (built with Go 1.27.x).
 #
 # The release gate requires all of the above green on both Go majors
@@ -157,6 +158,36 @@ jobs:
         run: go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
       - name: govulncheck (AC-1.4)
         run: govulncheck ./...
+
+  # Release-engineering regression pin (REL-02): .goreleaser.yaml must
+  # stay parseable and schema-valid for the exact GoReleaser version
+  # that performs releases (pinned v2.20.0 in release.yml).  The
+  # validator catches YAML syntax errors (the previous draft used `//`
+  # comments, which are not YAML), unknown schema fields, and build
+  # matrix mistakes on every push — an invalid release config can no
+  # longer merge silently.
+  release-config:
+    name: Release config (goreleaser check, REL-02)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.27.x"
+          cache: true
+      - name: goreleaser check (pinned CLI v2.20.0)
+        uses: goreleaser/goreleaser-action@v2.9.1
+        with:
+          distribution: goreleaser
+          version: v2.20.0
+          args: check
+      - name: Snapshot build compiles the full matrix (REL-02)
+        # Builds linux/darwin/windows x amd64/arm64 without publishing
+        # anything; proves builds.main (./cmd/gseer) and the ldflags
+        # version metadata resolve for every configured target.
+        run: goreleaser build --snapshot --clean
 
   # Search ≠ Scan is the most important architectural property of GSEER
   # (the import graph never lets a collector/egress package reach the

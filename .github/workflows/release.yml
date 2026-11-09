@@ -1,0 +1,77 @@
+# GSEER release pipeline (REL-03).
+#
+# Purpose: build and publish the draft release for a version tag using
+# the SAME GoReleaser configuration that CI validates on every push
+# (.goreleaser.yaml, checked by the release-config job in ci.yml).
+#
+# REL-03 remediation notes:
+#   - The GoReleaser CLI version is explicitly pinned (v2.20.0), never
+#     `latest`: `latest` is not reproducible, silently upgrades the
+#     release toolchain, and previously broke this repository's own CI
+#     twice for golangci-lint and govulncheck the same way (see the
+#     comments in ci.yml).  The action itself is pinned to v2.9.1 by
+#     commit-SHA-equivalent tag; bumping either pin is a reviewed
+#     change.
+#   - Workflow and configuration are verified together: ci.yml runs
+#     `goreleaser check` + `goreleaser build --snapshot` with the same
+#     pinned CLI on every push, so the config this workflow consumes
+#     can never drift out of validity.
+#   - Least privilege: contents: write is required to create the draft
+#     release and upload artifacts; no other scope is granted, and no
+#     other workflow in this repository writes at all.
+#
+# Publication gate (SPEC-03 §4; standing owner rule 8): a tag push
+# alone NEVER publishes anything.  The release is created as a DRAFT
+# (release.draft: true in .goreleaser.yaml) and must be reviewed and
+# published manually by the owner.  Tag creation itself additionally
+# requires the CI release gate to be green on both Go majors.
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Draft release (GoReleaser v2.20.0)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Full history: the changelog is generated from commit ranges.
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Sanity pin, mirroring the before hook in .goreleaser.yaml: the
+      # module graph must match go.sum before artifacts are produced.
+      - name: go mod verify
+        run: go mod verify
+
+      - name: Run GoReleaser (draft release)
+        uses: goreleaser/goreleaser-action@v2.9.1
+        with:
+          distribution: goreleaser
+          version: v2.20.0
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Artifact summary
+        run: |
+          echo "## Draft release artifacts (awaiting owner review)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- GoReleaser: v2.20.0 (pinned)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Config: .goreleaser.yaml (validated by CI on every push)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Publication: draft — manual owner review required before publish" >> "$GITHUB_STEP_SUMMARY"
