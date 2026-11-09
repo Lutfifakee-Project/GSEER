@@ -85,6 +85,10 @@ const (
 	KwContains // contains
 	KwInCIDR   // in_cidr
 	KwInDomain // in_domain
+
+	// MATCH is the `*=` wildcard fuzzy-match operator (compatibility
+	// syntax; `*` matches any run of characters, `?` exactly one).
+	MATCH
 )
 
 // kindNames powers Kind.String and the "did you mean"-style hints.
@@ -95,7 +99,7 @@ var kindNames = map[Kind]string{
 	EQ: "EQ", NEQ: "NEQ", ASSIGN: "ASSIGN", LT: "LT", LE: "LE", GT: "GT", GE: "GE",
 	KwAnd: "KwAnd", KwOr: "KwOr", KwNot: "KwNot", KwIn: "KwIn",
 	KwAny: "KwAny", KwAll: "KwAll", KwContains: "KwContains",
-	KwInCIDR: "KwInCIDR", KwInDomain: "KwInDomain",
+	KwInCIDR: "KwInCIDR", KwInDomain: "KwInDomain", MATCH: "MATCH",
 }
 
 // String renders the kind name (test/explain ergonomics).
@@ -230,6 +234,7 @@ var twoCharOps = map[rune]struct {
 	'&': {self: '&', kind: AND, text: "&&"},
 	'|': {self: '|', kind: OR, text: "||"},
 	'=': {self: '=', kind: EQ, text: "=="},
+	'*': {alt: '=', kind: MATCH, text: "*="},
 	'!': {alt: '=', kind: NEQ, text: "!="},
 	'<': {alt: '=', kind: LE, text: "<="},
 	'>': {alt: '=', kind: GE, text: ">="},
