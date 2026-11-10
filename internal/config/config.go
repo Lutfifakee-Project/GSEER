@@ -38,6 +38,11 @@ const (
 	// ProfileSelfHosted runs the local API + dashboard backed by
 	// PostgreSQL.  Migrations run on setup --self-hosted and server start.
 	ProfileSelfHosted Profile = "self-hosted"
+	// ProfilePersonal runs the full engine against ONE embedded SQLite
+	// database file (checkpoint B): no PostgreSQL, no separate service.
+	// database.dsn holds the database FILE path (not a postgres URL);
+	// first-run provisioning is `gseer setup --personal`.
+	ProfilePersonal Profile = "personal"
 )
 
 // Config is the validated, in-memory configuration.

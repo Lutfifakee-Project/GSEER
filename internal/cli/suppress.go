@@ -118,9 +118,12 @@ func newSuppressAddCmd() *cobra.Command {
 				}
 				in.ExpiresAt = &exp
 			}
-			cfg, err := loadSelfHostedConfig()
+			cfg, err := loadEngineConfig()
 			if err != nil {
 				return err
+			}
+			if cfg.Profile == config.ProfilePersonal {
+				return runPersonalSuppressAdd(cmd, kind, value, reason, by, expires, noRetract, jsonOut)
 			}
 			pool, err := openAppPool(cmd, cfg)
 			if err != nil {
@@ -199,9 +202,12 @@ func newSuppressListCmd() *cobra.Command {
 		Short: "List every suppression rule (including disabled and expired)",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadSelfHostedConfig()
+			cfg, err := loadEngineConfig()
 			if err != nil {
 				return err
+			}
+			if cfg.Profile == config.ProfilePersonal {
+				return runPersonalSuppressList(cmd)
 			}
 			pool, err := openAppPool(cmd, cfg)
 			if err != nil {
@@ -241,9 +247,12 @@ func newSuppressRemoveCmd() *cobra.Command {
 			if _, err := fmt.Sscanf(args[0], "%d", &id); err != nil || id <= 0 {
 				return fmt.Errorf("E_SUPPRESS_ID: %q is not a positive rule id (see gseer suppress list)", args[0])
 			}
-			cfg, err := loadSelfHostedConfig()
+			cfg, err := loadEngineConfig()
 			if err != nil {
 				return err
+			}
+			if cfg.Profile == config.ProfilePersonal {
+				return runPersonalSuppressRemove(cmd, id)
 			}
 			pool, err := openAppPool(cmd, cfg)
 			if err != nil {

@@ -63,6 +63,8 @@ import (
 func registerSetupCmd(root *cobra.Command) {
 	var (
 		selfHosted           bool
+		personal             bool
+		personalDBPath       string
 		withCompose          bool
 		withFull             bool
 		dbURL                string
@@ -78,6 +80,9 @@ func registerSetupCmd(root *cobra.Command) {
 
 Two profiles (SPEC-03 §5):
   - client:        configures a remote endpoint URL (no PostgreSQL needed).
+  - personal:      provisions ONE embedded SQLite database file (SQ-01..06
+                   enforced: 0600 file, WAL, migrations, suppression) —
+                   run: gseer setup --personal [--db-path <file>] [--load-fixtures]
   - self-hosted:   verifies the database is reachable, checks the
                    PostgreSQL version (16+, OD-7), and runs the hardened
                    v0.2.0 deployment order — no manual SQL (QS-3):
@@ -123,6 +128,16 @@ explicit --profile still wins.`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
+
+			if personal {
+				if selfHosted {
+					return fmt.Errorf("E_SETUP_USAGE: --personal and --self-hosted are mutually exclusive in one invocation")
+				}
+				if purgeFixtures {
+					return fmt.Errorf("E_SETUP_USAGE: --purge-fixtures is not a personal setup flag; load fixtures with --load-fixtures")
+				}
+				return runSetupPersonal(cmd, personalDBPath, loadFixtures)
+			}
 
 			if loadFixtures && purgeFixtures {
 				return fmt.Errorf("E_SETUP_USAGE: --load-fixtures and --purge-fixtures are mutually exclusive " +
@@ -200,6 +215,8 @@ explicit --profile still wins.`,
 		},
 	}
 	cmd.Flags().BoolVar(&selfHosted, "self-hosted", false, "initialize self-hosted mode (PostgreSQL + server)")
+	cmd.Flags().BoolVar(&personal, "personal", false, "initialize PERSONAL mode (one embedded SQLite database file; no PostgreSQL)")
+	cmd.Flags().StringVar(&personalDBPath, "db-path", "", "personal database file path (default: ~/.gseer/gseer.db)")
 	cmd.Flags().BoolVar(&withCompose, "with-compose", false, "write a db-only docker-compose.yml + generated .env (QS-2)")
 	cmd.Flags().BoolVar(&withFull, "full", false, "with --with-compose: write the FULL stack (db + server, healthchecks, token) as docker-compose.full.yml")
 	cmd.Flags().StringVar(&dbURL, "db-url", "", "override the saved DSN (used with --self-hosted and the fixture actions)")

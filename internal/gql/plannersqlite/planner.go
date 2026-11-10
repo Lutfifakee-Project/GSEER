@@ -828,12 +828,17 @@ func (b *builder) renderCursorPredicate(primary planner.SortSpec, cursor *planne
 		// comparison stays chronological regardless of the stored form.
 		qcol = fmt.Sprintf("gseer_ts(%s)", qcol)
 	}
-	rowKeyGT := fmt.Sprintf(
-		"(\"row_id\" > %s OR (\"row_id\" = %s AND \"row_kind\" > %s))",
-		b.placeholder(cursor.RowID), b.placeholder(cursor.RowID), b.placeholder(cursor.RowKind),
-	)
 
+	// BINDING ORDER CONTRACT: SQLite numbers every `?` by its position
+	// in the final SQL, so placeholders must be created in the exact
+	// order their fragments appear.  The value compare binds FIRST (it
+	// appears first), then the row-key fragment.
+	rowKeyGT := "" // built after the value placeholders
 	if cursor.Null {
+		rowKeyGT = fmt.Sprintf(
+			"(\"row_id\" > %s OR (\"row_id\" = %s AND \"row_kind\" > %s))",
+			b.placeholder(cursor.RowID), b.placeholder(cursor.RowID), b.placeholder(cursor.RowKind),
+		)
 		if primary.Direction == planner.DirDesc {
 			return fmt.Sprintf("((%s IS NULL AND %s) OR %s IS NOT NULL)", qcol, rowKeyGT, qcol)
 		}
@@ -841,16 +846,23 @@ func (b *builder) renderCursorPredicate(primary planner.SortSpec, cursor *planne
 	}
 
 	val := cursorValueArg(primary.Field, cursor.Value)
-	valPh := b.placeholder(val)
+	// Two occurrences (strict compare + tiebreaker equality), each its
+	// own positional parameter.
+	ltPh := b.placeholder(val)
+	eqPh := b.placeholder(val)
+	rowKeyGT = fmt.Sprintf(
+		"(\"row_id\" > %s OR (\"row_id\" = %s AND \"row_kind\" > %s))",
+		b.placeholder(cursor.RowID), b.placeholder(cursor.RowID), b.placeholder(cursor.RowKind),
+	)
 	if primary.Direction == planner.DirDesc {
 		return fmt.Sprintf(
 			"(%s < %s OR (%s = %s AND %s))",
-			qcol, valPh, qcol, valPh, rowKeyGT,
+			qcol, ltPh, qcol, eqPh, rowKeyGT,
 		)
 	}
 	return fmt.Sprintf(
 		"(%s > %s OR (%s = %s AND %s) OR %s IS NULL)",
-		qcol, valPh, qcol, valPh, rowKeyGT, qcol,
+		qcol, ltPh, qcol, eqPh, rowKeyGT, qcol,
 	)
 }
 

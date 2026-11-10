@@ -230,6 +230,8 @@ func runSearch(cmd *cobra.Command, args []string, sf searchFlags) error {
 	switch cfg.Profile {
 	case config.ProfileClient:
 		return clientSearch(out, cfg, q, facetsRequest{Enabled: fFacets, Dims: sf.FacetDims, MaxValues: sf.MaxValues})
+	case config.ProfilePersonal:
+		return runPersonalSearch(out, cfg, q, facetsRequest{Enabled: fFacets, Dims: sf.FacetDims, MaxValues: sf.MaxValues})
 	default:
 		return localSearch(out, cfg, q, facetsRequest{Enabled: fFacets, Dims: sf.FacetDims, MaxValues: sf.MaxValues})
 	}
