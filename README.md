@@ -345,7 +345,8 @@ random database password — never commit a real `.env`.
 
 - **Self-hosted index only.** A fresh install has an empty database;
   you search exactly what your sources collected. There is **no**
-  global, FOFA-scale index — GSEER is the engine, not a hosted service.
+  global, hosted-engine-scale index — GSEER is the engine, not a
+  hosted service.
 - **Passive facts are asset-level.** A DNS answer or a certificate-log
   entry proves an identifier was published; it never invents a port, a
   banner, or an HTTP title. Service-level rows appear only from

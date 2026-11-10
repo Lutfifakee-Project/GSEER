@@ -39,6 +39,13 @@ coverage.html
 # Local PostgreSQL data (if an operator runs PG outside Compose).
 /pgdata/
 
+# Personal-mode SQLite runtime DB (default lives in ~/.gseer outside the
+# repo; this guards the relative fallback and any --db-path inside the repo).
+/.gseer/
+gseer.db
+gseer.db-wal
+gseer.db-shm
+
 # OS-specific installer staging (release tooling; not in v0.0.1).
 /staging/
 

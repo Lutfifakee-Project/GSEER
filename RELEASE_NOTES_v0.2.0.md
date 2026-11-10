@@ -100,8 +100,8 @@ and flags produce byte-identical binaries.
 ## Known limitations (honest)
 
 - Self-hosted index only — no global dataset, no hosted search service,
-  no FOFA/Shodan equivalence of any kind.  You search exactly what your
-  own reviewed sources collected.
+  no equivalence with any hosted global search engine of any kind.  You
+  search exactly what your own reviewed sources collected.
 - The client-profile CLI cannot present the API's Bearer token (use
   `curl -H "Authorization: Bearer …"`).
 - Passive DNS facts are asset-level: resolved IPs are searchable with
