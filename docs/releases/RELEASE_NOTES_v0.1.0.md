@@ -2,8 +2,7 @@
 
 ## GSEER
 
-GSEER is an open-source, **self-hosted** internet-asset intelligence and
-search engine. You point it at identifiers you care about, its passive
+GSEER is an open-source, **self-hosted** internet-asset search engine. You point it at identifiers you care about, its passive
 collectors gather public facts about them (DNS records, ASN ownership),
 and you search everything it has indexed with a simple query language
 (GQL) — through a CLI, a REST API, and a built-in dashboard.

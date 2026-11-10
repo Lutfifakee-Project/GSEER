@@ -3,7 +3,61 @@
 All notable changes per release.  Format: Keep-a-Changelog-ish, newest
 first.  Versions follow semver (three-component).
 
-## [Unreleased] — Personal-Mode Wire-Up Fixes
+## [v0.3.0] — Zero-Config First Run, Personal Collection, New Identity
+
+Positioning rename: GSEER is the **internet-asset search engine** (the
+former intelligence-platform tagline is retired everywhere — README,
+CLI, dashboard, docs).  The data-source register
+(`docs/SOURCES.md`) remains the one place external data providers are
+named, because data provenance must be transparent.
+
+### Added
+
+- **Zero-configuration first run.**  Bare `gseer` now initializes
+  personal mode automatically when no config exists (same permission
+  policy, migrations, and config writer as `gseer setup --personal` —
+  one code path, no drift), then tells the user exactly how data
+  enters the index.  A later bare run prints an honest status panel
+  (profile, database, index counts, the next useful commands).
+- **`--version` finally works.**  The root flag existed since M1 but
+  was never consumed; bare `gseer --version` now prints the version
+  block.
+- **Collection works in personal mode.**  The collector engine now
+  runs against the storage `Backend` contract instead of the concrete
+  PostgreSQL store: `gseer source add/list/enable/disable`,
+  `gseer collect run/status/redrive`, and fingerprint enrichment all
+  work against the personal SQLite file.  The client profile is
+  still refused honestly (`E_CLIENT_ONLY`); the self-hosted PostgreSQL
+  paths are behavior-identical.
+- **New connector: `ptr` (reverse DNS).**  Resolves PTR records for
+  operator-named addresses (seed mode config or index) through the
+  operator's resolver and records hostname sightings with provenance.
+  Reviewed-enabled on the same basis as the `dns` connector —
+  standard protocol, operator-named targets, protocol facts
+  (`docs/SOURCES.md` §E).  No CIDR sweeps, no neighbor enumeration.
+
+### Changed
+
+- **README rebuilt user-first**: what GSEER is → install → quick start
+  → search examples → syntax → data collection → storage/backup →
+  configuration → troubleshooting → uninstall.  The fastest path from
+  `go install` to a first search is the top of the document.
+- `gseer --help` and the dashboard now carry the new identity and the
+  zero-config quick start.
+- Canonical collection types (`DataSourceRow`, `DeadLetter`, the
+  lookup-miss sentinel) moved to `internal/storage` so both engines
+  satisfy one typed contract (compile-time pinned in the CLI).
+
+### Fixed
+
+- `gseer collect status` no longer runs ad-hoc SQL in the CLI; it
+  reads the same store contract the rest of the engine uses (and now
+  works in personal mode).
+- CLI collection commands resolve their context defensively
+  (`commandContext`), so a mis-wired invocation can no longer hand a
+  nil context to the database layer.
+
+## [v0.2.2] — Personal-Mode Wire-Up Fixes
 
 Found by the first real personal-mode walkthrough (`go install` →
 `setup --personal` → daily commands).  No security boundary is

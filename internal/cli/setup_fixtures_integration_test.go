@@ -1,6 +1,6 @@
 //go:build integration
 
-// GSEER — Internet Asset Intelligence & Search Engine.
+// GSEER — internet-asset search engine.
 // Copyright (C) 2026  The GSEER Authors
 //
 // This program is free software: you can redistribute it and/or modify

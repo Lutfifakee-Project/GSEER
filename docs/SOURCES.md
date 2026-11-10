@@ -16,6 +16,7 @@
 | --- | --- | --- | --- |
 | `dns` | operator-configured resolver (system default) | **reviewed-enabled** | standard DNS recursion; the operator names every target; answers are protocol facts |
 | `ip2asn` | Team Cymru IP-to-ASN (DNS interface) | **reviewed-enabled** | explicitly free community service; DNS interface requested "at volume"; conservative rates + caching |
+| `ptr` | operator-configured resolver (system default) | **reviewed-enabled** | standard reverse-DNS (PTR) recursion; same basis as `dns` — operator-named addresses, protocol facts |
 | `rdap` | RIR registration data (ARIN/RIPE NCC et al.) | **disabled** | terms do not grant indexing/redistribution; needs written authorization |
 | `ct` | crt.sh (Sectigo CT aggregation) | **disabled** | no published terms covering automated collection or indexing/reuse |
 
@@ -205,6 +206,50 @@ commercial terms; indexing derived data not granted on free tiers).
 12. **Verdict: `reviewed-enabled`** — explicitly free community service
     published for this access method, conservative self-limits, cached
     answers.
+
+## §E Reverse DNS — PTR records (connector `ptr`)
+
+1. **Source identity / endpoint**: the DNS resolution system — the
+   operator's configured resolver (default: the operating system's
+   resolver; overridable per source via `resolver: host:port`),
+   querying the standard `in-addr.arpa` / `ip6.arpa` reverse trees.
+   GSEER deliberately does NOT hardcode any third-party resolver.
+2. **Access method**: standard UDP/TCP 53 recursive PTR queries (the
+   same protocol, and the same resolver, as the `dns` connector).
+3. **API key requirements**: none.
+4. **License / terms of use**: identical basis to §C — DNS is a
+   protocol, not a licensed dataset; reverse resolution is the
+   resolver's normal purpose.  Operators who point GSEER at a specific
+   public resolver are responsible for that provider's AUP; the
+   default (system resolver) is the operator's own infrastructure.
+5. **Permission for automated collection and indexing**: PTR answers
+   are uncopyrighted protocol facts (a name published for an address
+   by its operator, via the address's delegation).  Queries are
+   bounded by the seed list — only addresses the operator configured
+   or that are already in the operator's index are resolved.  NO CIDR
+   sweeps, NO neighbor enumeration: a seed list of one address is one
+   query.
+6. **Rate limits**: self-imposed conservative caps (default client
+   1 request/second; per-source `requests_per_second` /
+   `limit_per_run`).  No third-party quota is consumed by default.
+7. **Data retention**: GSEER keeps the answer as a hostname sighting
+   with first_seen/last_seen (the index IS the cache).
+8. **Privacy**: reverse queries reveal which addresses the operator
+   enriches to the resolver operator — the standard privacy property
+   of recursive DNS, kept with the operator's own infrastructure by
+   default.  PTR answers are about host naming, not persons.
+9. **Provenance**: `provenance = "ptr"` on every observation; evidence
+   carries the queried address and the raw answer name.
+10. **Freshness**: the observation time IS the lookup time; re-running
+    the connector ages last_seen forward (stale flag clears).
+11. **Known limitations**: many addresses publish no PTR record (the
+    empty answer is a non-fact and is not stored); recursive answers
+    may come from cache (confidence `medium`); a PTR name says nothing
+    about reachability of services (discovery ≠ observation — no
+    port/HTTP/TLS/banner data is invented).
+12. **Verdict: `reviewed-enabled`** — clear terms (standard protocol,
+    operator-named targets, self-imposed rates), no third-party
+    dependency by default.  Introduced in v0.3.0.
 
 ## Rejected / not implemented (watch list)
 

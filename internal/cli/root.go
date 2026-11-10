@@ -1,4 +1,4 @@
-// GSEER — Internet Asset Intelligence & Search Engine.
+// GSEER — internet-asset search engine.
 // Copyright (C) 2026  The GSEER Authors
 //
 // This program is free software: you can redistribute it and/or modify
@@ -29,62 +29,69 @@
 package cli
 
 import (
-	"fmt"
-	"io"
+        "fmt"
+        "io"
 
-	"github.com/spf13/cobra"
+        "github.com/spf13/cobra"
 )
 
 // Exit codes per SPEC-03 §9.  These are stable across every command and
 // surface; the CLI never returns ad-hoc codes.
 const (
-	ExitSuccess      = 0  // Success (including a zero-result search)
-	ExitInvalidInput = 2  // Invalid query / invalid input
-	ExitConfig       = 3  // Configuration failure
-	ExitUnavailable  = 4  // Service unavailable (endpoint/DB/index)
-	ExitAuth         = 5  // Authentication failure
-	ExitUsagePlanned = 64 // Usage error (wrong args; planned-command pointer)
-	ExitInternal     = 70 // Internal error (stack trace only with --verbose)
+        ExitSuccess      = 0  // Success (including a zero-result search)
+        ExitInvalidInput = 2  // Invalid query / invalid input
+        ExitConfig       = 3  // Configuration failure
+        ExitUnavailable  = 4  // Service unavailable (endpoint/DB/index)
+        ExitAuth         = 5  // Authentication failure
+        ExitUsagePlanned = 64 // Usage error (wrong args; planned-command pointer)
+        ExitInternal     = 70 // Internal error (stack trace only with --verbose)
 )
 
 // rootFlags holds the global persistent flags declared on RootCmd.  M1
 // wires only the flag declarations; flag handling lands with the commands
 // that consume them (M2 config, M11 CLI).
 type rootFlags struct {
-	configPath string
-	profile    string
-	server     string
-	output     string
-	verbose    bool
-	quiet      bool
-	noColor    bool
-	showVer    bool
+        configPath string
+        profile    string
+        server     string
+        output     string
+        verbose    bool
+        quiet      bool
+        noColor    bool
+        showVer    bool
 }
 
 // RootCmd is the top-level `gseer` command.  Help text matches SPEC-03 §2
 // verbatim (the "Coming later" pointer line is normative; AC-5.1 parses it).
 var RootCmd = &cobra.Command{
-	Use:   "gseer",
-	Short: "GSEER — Internet Asset Intelligence & Search Engine",
-	Long: `GSEER — Internet Asset Intelligence & Search Engine
-Discover. Identify. Search.
+        Use:   "gseer",
+        Short: "GSEER — internet-asset search engine",
+        Long: `GSEER — internet-asset search engine
+Search internet assets. Collect authorized data. Store locally. Search easily.
 
 Quick start:
-  gseer setup
-  gseer doctor
+  gseer                           first run initializes personal mode automatically
+  gseer setup --load-fixtures     load the labeled synthetic evaluation corpus
   gseer search 'port==443 && title CONTAINS "login"'
 Coming later (not in this release — see docs/ROADMAP.md):
   scan (authorized observation), asset
 License: GNU AGPL-3.0 — https://github.com/Lutfifakee-Project/GSEER`,
-	// Disable the cobra completion subcommand's auto-help banner; we
-	// register `completion` ourselves with the exact short description.
-	CompletionOptions: cobra.CompletionOptions{
-		DisableDefaultCmd: false,
-	},
-	// Silence cobra's default error printing — the cli layer formats
-	// errors per the style guide (AC-5.9: what failed → why → next cmd).
-	SilenceErrors: true,
-	SilenceUsage:  true,
+        // Disable the cobra completion subcommand's auto-help banner; we
+        // register `completion` ourselves with the exact short description.
+        CompletionOptions: cobra.CompletionOptions{
+                DisableDefaultCmd: false,
+        },
+        // Silence cobra's default error printing — the cli layer formats
+        // errors per the style guide (AC-5.9: what failed → why → next cmd).
+        SilenceErrors: true,
+        SilenceUsage:  true,
+        // Bare `gseer` is the zero-configuration entry point (v0.3.0):
+        // the first run auto-initializes personal mode; later runs print
+        // a short status + the most useful next commands.  Explicit
+        // arguments never reach this (cobra dispatches to subcommands).
+        RunE: func(cmd *cobra.Command, args []string) error {
+                return runFirstRun(cmd)
+        },
 }
 
 // flags is the singleton rootFlags; populated by persistent flag parsing.
@@ -96,34 +103,34 @@ var flags rootFlags
 // to call Execute first.  Each registration is a separate function so
 // the file layout matches the SPEC-02 §2 package map.
 func init() {
-	RootCmd.PersistentFlags().StringVar(&flags.configPath, "config", "", "path to config file (default: $GSEER_CONFIG or platform default)")
-	RootCmd.PersistentFlags().StringVar(&flags.profile, "profile", "", "configuration profile (client | self-hosted)")
-	RootCmd.PersistentFlags().StringVar(&flags.server, "server", "", "endpoint URL for client profile")
-	RootCmd.PersistentFlags().StringVarP(&flags.output, "output", "o", "", "output format: table|json|yaml|csv|ndjson")
-	RootCmd.PersistentFlags().BoolVar(&flags.verbose, "verbose", false, "verbose output (include stack traces on error)")
-	RootCmd.PersistentFlags().BoolVar(&flags.quiet, "quiet", false, "quiet output (suppress tips and banners)")
-	RootCmd.PersistentFlags().BoolVar(&flags.noColor, "no-color", false, "disable color output")
-	RootCmd.PersistentFlags().BoolVar(&flags.showVer, "version", false, "show version and exit")
+        RootCmd.PersistentFlags().StringVar(&flags.configPath, "config", "", "path to config file (default: $GSEER_CONFIG or platform default)")
+        RootCmd.PersistentFlags().StringVar(&flags.profile, "profile", "", "configuration profile (client | self-hosted | personal)")
+        RootCmd.PersistentFlags().StringVar(&flags.server, "server", "", "endpoint URL for client profile")
+        RootCmd.PersistentFlags().StringVarP(&flags.output, "output", "o", "", "output format: table|json|yaml|csv|ndjson")
+        RootCmd.PersistentFlags().BoolVar(&flags.verbose, "verbose", false, "verbose output (include stack traces on error)")
+        RootCmd.PersistentFlags().BoolVar(&flags.quiet, "quiet", false, "quiet output (suppress tips and banners)")
+        RootCmd.PersistentFlags().BoolVar(&flags.noColor, "no-color", false, "disable color output")
+        RootCmd.PersistentFlags().BoolVar(&flags.showVer, "version", false, "show version and exit")
 
-	registerVersionCmd(RootCmd)
-	registerSearchCmd(RootCmd)
-	registerHostCmd(RootCmd)
-	registerSetupCmd(RootCmd)
-	registerDoctorCmd(RootCmd)
-	registerServerCmd(RootCmd)
-	registerSourceCmd(RootCmd)
-	registerCollectCmd(RootCmd)
-	registerSuppressCmd(RootCmd)
-	registerExportCmd(RootCmd)
-	registerUpdateCmd(RootCmd)
-	registerRulesCmd(RootCmd)
-	registerDBCmd(RootCmd)
-	registerComingLaterCmds(RootCmd)
+        registerVersionCmd(RootCmd)
+        registerSearchCmd(RootCmd)
+        registerHostCmd(RootCmd)
+        registerSetupCmd(RootCmd)
+        registerDoctorCmd(RootCmd)
+        registerServerCmd(RootCmd)
+        registerSourceCmd(RootCmd)
+        registerCollectCmd(RootCmd)
+        registerSuppressCmd(RootCmd)
+        registerExportCmd(RootCmd)
+        registerUpdateCmd(RootCmd)
+        registerRulesCmd(RootCmd)
+        registerDBCmd(RootCmd)
+        registerComingLaterCmds(RootCmd)
 
-	// Banner before help for root-level invocations only
-	// (`gseer`, `gseer --help`, `gseer help`).  Subcommand help uses the
-	// default cobra help func and prints no banner.
-	RootCmd.SetHelpFunc(bannerHelpFunc)
+        // Banner before help for root-level invocations only
+        // (`gseer`, `gseer --help`, `gseer help`).  Subcommand help uses the
+        // default cobra help func and prints no banner.
+        RootCmd.SetHelpFunc(bannerHelpFunc)
 }
 
 // Execute runs the root command and returns the cobra error (if any).
@@ -132,7 +139,7 @@ func init() {
 // commands per AC-5.7–5.8).  Command and flag registration happens in
 // init() so Execute is just the dispatch call.
 func Execute() error {
-	return RootCmd.Execute()
+        return RootCmd.Execute()
 }
 
 // printf and println are the rendering helpers for command output.
@@ -144,9 +151,9 @@ func Execute() error {
 // per-command rendering call sites readable (M1 errcheck discipline:
 // no unchecked error returns anywhere in the package).
 func printf(w io.Writer, format string, a ...any) {
-	_, _ = fmt.Fprintf(w, format, a...)
+        _, _ = fmt.Fprintf(w, format, a...)
 }
 
 func println(w io.Writer, a ...any) {
-	_, _ = fmt.Fprintln(w, a...)
+        _, _ = fmt.Fprintln(w, a...)
 }

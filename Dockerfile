@@ -1,4 +1,4 @@
-# GSEER — Internet Asset Intelligence & Search Engine.
+# GSEER — internet-asset search engine.
 # Multi-stage build: compile with the Go toolchain, ship on a minimal
 # alpine runtime.  Non-root, no build tools in the final image, no
 # collector/egress capability beyond what the operator explicitly runs

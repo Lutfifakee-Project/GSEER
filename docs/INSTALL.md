@@ -1,21 +1,29 @@
-# GSEER — Installation (v0.2.0)
+# GSEER — Installation (v0.3.0)
 
-> v0.2.0 is a **source-only self-hosted release**. The artifact is the
-> source archive `GSEER-v0.2.0-source.zip` together with its SHA-256
-> checksum sidecar `GSEER-v0.2.0-source.zip.sha256`. This source archive
-> is the **only** downloadable release artifact for v0.2.0. There are no
-> prebuilt platform binaries, no binary packages, and no published
-> Docker image for this release. Build
-> from source (below), or build the Docker image locally via the
-> `Dockerfile`.
+## Install method: `go install` (recommended)
+
+Install Go (latest version), then:
+
+```bash
+go install -v github.com/Lutfifakee-Project/gseer/cmd/gseer@latest
+```
+
+The binary lands in `$(go env GOPATH)/bin` — put that on your `PATH` if
+it is not.  Nothing else is required for personal mode: the first
+`gseer` run creates the single-file database and config automatically.
+
+Pin a release instead of `@latest` when you want reproducibility, e.g.
+`go install github.com/Lutfifakee-Project/gseer/cmd/gseer@v0.3.0`.
+Note on `version` output: `go install` builds carry no VCS metadata, so
+`commit`/`built_at` read "unknown" — the version itself is correct.
 
 ## Install method: build from source
 
 | Component | Requirement |
 | --- | --- |
 | Go | 1.26+ (per `go.mod`) |
-| PostgreSQL | **16+** if you run your own (OD-7 floor enforced by `gseer setup` and `gseer doctor`; verified end-to-end on **16.15 and 17.2**; the compose files ship `postgres:17-alpine`) |
-| OS | Linux / macOS / Windows (build-tested where the CI matrix runs; no platform is officially verified as a binary target in v0.2.0) |
+| PostgreSQL | **16+** only for the self-hosted profile (OD-7 floor enforced by `gseer setup` and `gseer doctor`; verified end-to-end on **16.15 and 17.2**; the compose files ship `postgres:17-alpine`) |
+| OS | Linux / macOS / Windows (the CI matrix builds and tests all three) |
 
 ```bash
 git clone https://github.com/Lutfifakee-Project/GSEER.git

@@ -1,4 +1,4 @@
-// GSEER — Internet Asset Intelligence & Search Engine.
+// GSEER — internet-asset search engine.
 // Copyright (C) 2026  The GSEER Authors
 //
 // This program is free software: you can redistribute it and/or modify
@@ -188,7 +188,7 @@ var pageTpl = `<!DOCTYPE html>
 </style>
 </head>
 <body>
-<h1>GSEER — Internet Asset Intelligence &amp; Search</h1>
+<h1>GSEER — internet-asset search engine</h1>
 <p class="tagline">Discover. Identify. Search. — self-hosted index</p>
 
 <form class="search" method="get" action="/">

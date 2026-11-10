@@ -1,4 +1,4 @@
-// GSEER — Internet Asset Intelligence & Search Engine.
+// GSEER — internet-asset search engine.
 // Copyright (C) 2026  The GSEER Authors
 //
 // This program is free software: you can redistribute it and/or modify
@@ -135,7 +135,7 @@ func TestRedriveSuppressionInterplay(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Suppress 10.9.9.9 BEFORE the re-drive.
-	if _, _, err := r.Store.AddSuppression(context.Background(), postgres.SuppressInput{Kind: "ip", Value: "10.9.9.9", Reason: "redrive test", CreatedBy: "t"}); err != nil {
+	if _, _, err := pgStoreOf(t, r).AddSuppression(context.Background(), postgres.SuppressInput{Kind: "ip", Value: "10.9.9.9", Reason: "redrive test", CreatedBy: "t"}); err != nil {
 		t.Fatalf("add suppression: %v", err)
 	}
 

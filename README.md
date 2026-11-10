@@ -2,203 +2,75 @@
 
 ![GSEER banner](docs/assets/banner.png)
 
-> Internet Asset Intelligence & Search Engine.
-> **Discover. Identify. Search.**
+> **GSEER — internet-asset search engine**
+> Search internet assets. Collect authorized data. Store locally. Search easily.
 
 [![CI](https://github.com/Lutfifakee-Project/GSEER/actions/workflows/ci.yml/badge.svg)](https://github.com/Lutfifakee-Project/GSEER/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
 
-GSEER is an open-source, **self-hosted** internet-asset intelligence and
-search engine. You point it at identifiers you care about, its passive
-collectors gather public facts about them (DNS records, ASN ownership),
-and you search everything it has indexed with a simple query language —
-through a CLI, a REST API, and a built-in dashboard.
-
-Everything runs on your machine: your database, your data, your rules.
-
 ---
 
-## Features
+## 1. What is GSEER?
 
-- **Search (GQL)** — one query language, three surfaces (CLI, REST API,
-  dashboard), all backed by a single `SearchService`. Search is always
-  read-only: a query can never trigger collection or mutate data.
-- **Faceted search** — port / protocol / technology / service / country /
-  source / freshness aggregates over the same filter
-  (`gseer search --facets`).
-- **Export** — streamed JSON / CSV / NDJSON with cursor-stable
-  pagination and RFC 4180 escaping (`gseer export`).
-- **Passive collection** — explicit, operator-driven collectors with a
-  terms-review gate, checkpoints, dead-letter bookkeeping, and re-drive.
-  Nothing ever runs uninvoked.
-- **Suppression policy** — block IPs/CIDRs/domains from ever entering
-  your index, retroactively if needed (`gseer suppress`).
-- **Fingerprint rules** — a lint-gated, versioned rule collection that
-  classifies technology evidence an observation already carries into
-  products with confidence (`gseer rules`).
-- **Signed updates** — `gseer update` verifies an Ed25519-signed
-  manifest against a key embedded in the binary before anything is
-  downloaded or replaced.
-- **Full Docker stack** — one command writes a db + server compose file
-  with healthchecks, a persistent volume, and a generated API token.
+GSEER is an open-source, **self-hosted search engine for internet assets**.
+You tell it which identifiers you care about, its passive collectors gather
+public facts about them (DNS answers, reverse-DNS names, ASN ownership), and
+you search everything it has indexed with a simple query language — from a
+CLI, a REST API, and a built-in dashboard.
 
-## Requirements
+**Everything runs on your machine**: your database, your data, your rules.
+No account, no API key, no hosted service. A query can only ever READ —
+searching never collects, and nothing collects unless you run it.
 
-| Component | Requirement |
-| --- | --- |
-| Go | 1.26+ (only for `go install` / building from source — the binary itself has zero runtime dependencies) |
-| Docker + Compose | for the bundled PostgreSQL 17 (recommended path for the server profile) |
-| PostgreSQL | **16+** if you run your own (OD-7 floor enforced by `gseer setup` and `gseer doctor`; verified end-to-end on **16.15 and 17.2** — `docs/DEPLOYMENT.md`) |
-| OS | Linux / macOS / Windows |
+Product principles: Easy to Use · Fully Self-Hosted · Local-First ·
+Accurate Search · Transparent Data Collection · Secure by Default ·
+Production-Ready · Independent Brand.
 
-> v0.2.0 is a **source-only self-hosted release**. The artifact is the
-> source archive `GSEER-v0.2.0-source.zip` together with its SHA-256
-> checksum sidecar `GSEER-v0.2.0-source.zip.sha256`. This source archive
-> is the **only** downloadable release artifact for v0.2.0. There are no
-> prebuilt platform binaries, no binary packages, and no published
-> Docker image for this release. Build from source (below), or build the
-> Docker image locally via the `Dockerfile`. Docker is the easiest way
-> to satisfy the PostgreSQL dependency.
->
-> **v0.2.1 (compatible increment)** adds the GQL compatibility layer
-> (`*=`, free text, field aliases), **personal mode on SQLite** — a
-> single-file database with no PostgreSQL dependency — and release
-> engineering (validated release config, `go install` support,
-> draft-gated releases).  See `docs/releases/RELEASE_NOTES_v0.2.1.md`.  PostgreSQL
-> remains the primary engine for the self-hosted server profile.
+## 2. Installation
 
-## Quick Start
-
-### Install the binary
-
-Copy-paste; needs Go 1.26+ (the built binary has zero runtime
-dependencies):
+Install Go (latest version), then one command:
 
 ```bash
-# Easiest — no clone, no build script:
-go install github.com/Lutfifakee-Project/GSEER/cmd/gseer@v0.2.1
-gseer version
-#   → gseer v0.2.1 (version/commit/built_at come from the toolchain's
-#     own build info; `gseer doctor` prints the binary's SHA-256)
-
-# Or build from source:
-git clone https://github.com/Lutfifakee-Project/GSEER.git
-cd GSEER
-make build VERSION=v0.2.1
-./bin/gseer version
-# (optional: sudo cp bin/gseer /usr/local/bin/ so `gseer` is on PATH)
+go install -v github.com/Lutfifakee-Project/gseer/cmd/gseer@latest
 ```
 
-Platform archives land on the [Releases](https://github.com/Lutfifakee-Project/GSEER/releases)
-page after a maintainer publishes the draft; verify any download
-against `checksums.txt` (SHA-256) and the `sha256=` line of
-`gseer doctor`.
+That is the whole install. The binary lands in `$(go env GOPATH)/bin` — make
+sure that directory is on your `PATH`.
 
-### Path A — Personal mode (one SQLite file, no PostgreSQL, no Docker)
+Requirements for the default (personal) mode: **none beyond Go-built
+binary**. No database server, no Docker, no config files to write.
 
-For a single operator on a laptop or VPS. CLI surfaces only — search,
-export, suppression, backup (no API server; that is Path B).
+## 3. Quick Start
 
-```bash
-# 1. Initialize the single-file database (~/.gseer/gseer.db; override
-#    the location with --db-path)
-gseer setup --personal
-
-# 2. Verify — doctor runs real personal checks now
-#    (database file, migration state, index honesty)
-gseer doctor
-
-# 3. The index starts EMPTY (honest — GSEER is the engine, not the
-#    data).  Load the labeled SYNTHETIC evaluation corpus to try every
-#    surface without collecting anything:
-gseer setup --load-fixtures          # asks for a y/yes confirmation
-gseer search 'port==443 && title CONTAINS "login"'
-gseer export 'port==443' --format csv --out results.csv
-
-# 4. Keep classes of records out of your index
-gseer suppress add cidr 10.0.0.0/8 --reason "RFC1918"
-gseer suppress list
-
-# 5. Consistent online backup / restore (VACUUM INTO)
-gseer db backup --out backup.db
-gseer db restore backup.db
-
-# 6. Real collection needs the self-hosted profile — the collection
-#    registry (sources, jobs, checkpoints, dead letters) is
-#    PostgreSQL-only.  `gseer source`/`collect` on a personal install
-#    refuse with E_PROFILE_UNSUPPORTED and point here:
-gseer setup --self-hosted --with-compose   # → Path B
-```
-
-### Path B — Self-hosted server (PostgreSQL + dashboard + API)
+Copy-paste, in order:
 
 ```bash
-# 1. Write the compose file + a .env with a random database password
-gseer setup --self-hosted --with-compose
+# 1. First run — GSEER initializes personal mode automatically:
+gseer
+#   → creates ~/.gseer/gseer.db (one SQLite file, 0600)
+#   → writes ~/.gseer/config.yaml
+#   → prints exactly what to do next
 
-# 2. Start PostgreSQL (healthcheck-gated)
-docker compose up -d db
-docker compose ps db          # wait until it shows "healthy"
-
-# 3. Hardened setup — bootstrap → migrate → grants → audit, one command
-gseer setup --self-hosted --db-url "$(grep '^GSEER_DSN=' .env | cut -d= -f2-)"
-#   → [ ok ] migrations: 8 applied, schema at head v17
-#   → [ ok ] privilege audit: PASSED (fail-closed gate, OD-5)
-#   → prints GSEER_DB_RUNTIME_DSN (the gseer_app credential) EXACTLY ONCE
-
-# 4. Make this shell self-hosted (setup does not rewrite your shell)
-export GSEER_PROFILE=self-hosted
-export GSEER_DB_DSN="$(grep '^GSEER_DSN=' .env | cut -d= -f2-)"
-export GSEER_DB_RUNTIME_DSN='postgres://gseer_app:<from step 3>@127.0.0.1:5432/gseer?sslmode=disable'
-#   Without this, the CLI defaults to the client profile and doctor
-#   fails with E_CONFIG_REQUIRED (client.endpoint missing).  The server
-#   additionally REQUIRES the runtime credential — it never serves
-#   traffic under the operator credential (docs/DEPLOYMENT.md).
-
-# 5. Verify the installation
+# 2. Verify the installation:
 gseer doctor
-#   → 6 PASS, 0 FAIL.  (The index is reported as EMPTY — that is honest.)
+#   → 4 PASS, 0 FAIL (the index is reported EMPTY — that is honest)
 
-# 6. Your first search (a fresh install has an empty index)
-gseer search 'port==443'
-#   → The index is empty — no assets have been ingested yet.
-
-# 7. (Optional) load the labeled SYNTHETIC evaluation corpus so you can
-#    try search/export/facets without collecting anything
+# 3. Try search with the labeled SYNTHETIC evaluation corpus:
 gseer setup --load-fixtures          # asks for a y/yes confirmation
 gseer search 'port==443 && title CONTAINS "login"'
 #   Every surface labels this data: SYNTHETIC EVALUATION DATA.
 
-# 8. Register a source and run it — explicit, one command each
-#    (docs/SOURCES.md holds the terms verdicts)
-gseer source add my-dns --type dns --seed-mode config \
-    --seeds example.net,example.org --enable --yes
-gseer collect run --source my-dns
-gseer search 'domain IN_DOMAIN "example.net"'
-
-# 9. Start the dashboard + API (runs the privilege audit first, in the foreground)
-gseer server start
-#   Dashboard:  http://127.0.0.1:8443/
-#   API health: http://127.0.0.1:8443/api/v1/health
+# 4. (Optional) consistent backup of your local index:
+gseer db backup --out backup.db
 ```
 
-Prefer everything in Docker? `gseer setup --with-compose --full` writes
-a `docker-compose.full.yml` (db + server, generated API token, database
-not exposed to the host) — then `docker compose -f
-docker-compose.full.yml up -d --build`. See `docs/DOCKER.md`.
+Your first REAL data comes from collection — see section 6.
 
-**Stop / restart the service:**
+Prefer a bigger, multi-user setup? The self-hosted profile runs on
+PostgreSQL 16+ with a hardened deployment order — see
+[`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) and section 7.
 
-```bash
-# server start runs in the foreground:
-#   stop with Ctrl-C in its terminal, or from another terminal:
-gseer server stop
-gseer server status
-gseer server start          # start it again
-docker compose stop db      # stop PostgreSQL;  docker compose start db
-```
-
-## First searches (GQL)
+## 4. Search examples
 
 GQL is the GSEER Query Language. `=` is sugar for `==`; strings are
 double-quoted; numbers are bare integers.
@@ -211,246 +83,175 @@ gseer search 'ip IN_CIDR "203.0.113.0/24"'         # CIDR containment
 gseer search 'domain IN_DOMAIN "example.net"'      # apex + subdomains
 gseer search 'ANY(host){ http.status == 200 }'     # host has ANY service with 200
 gseer search 'port==443' --facets                  # facet aggregates over the same rows
-gseer search 'stale == "false"' --facets --facet port,protocol,country --max-values 5
 gseer search 'port==443' --mode asset              # one row per asset
 gseer search 'port==443' --explain                 # print the compiled query plan
 gseer search 'port==443' --validate                # validate only, no DB contact
-gseer search '"wordpress"'                         # bare-keyword free text (stored text surfaces)
+gseer search '"wordpress"'                         # bare-keyword free text
 gseer search 'ip*="203.0.113.*"'                   # wildcard fuzzy match (* = any run, ? = one)
-gseer search 'after="2026-01-01" && status_code=200'  # compat aliases: time filter + status
+gseer search 'after="2026-01-01" && status_code=200'
 ```
 
-The compatibility layer adds C-style operators (`&&`, `||`, `!`),
-wildcard fuzzy matching (`*=`), common field aliases (`host`, `org`,
-`base_protocol`, `status_code`, `cert.subject.cn`, `cert.issuer.cn`),
-directional time filters (`after`/`before`), derived booleans
-(`is_domain`, `is_ipv6`, `cert.is_expired`), and empty-value semantics
-(`field=""` = missing-or-empty). The full mapping — including what is
-deliberately NOT supported and why (Search ≠ Scan) — is in
-`docs/SEARCH-SYNTAX.md`.
+## 5. Search Syntax
 
-The full field registry (every field and its operators) is in
-`gseer search --help`. Export the results:
+The full field registry is in `gseer search --help`; the complete grammar,
+operator list, and the deliberate NOT-supported list (and why — Search ≠
+Scan) live in [`docs/SEARCH-SYNTAX.md`](docs/SEARCH-SYNTAX.md).
 
-```bash
-gseer export 'stale == "false"' --format csv --out results.csv
-gseer export 'port == 443' --format ndjson --out -   # stdout; stats go to stderr
-```
+Core shape:
 
-## CLI Command Reference
-
-Run `gseer --help` for the live list; `gseer <command> --help` documents
-every flag.  Profile support per command — **P** = personal mode
-(SQLite), **S** = self-hosted (PostgreSQL), **C** = client (remote
-server).  Verified against v0.2.1:
-
-| Command | Purpose |
+| Feature | Example |
 | --- | --- |
-| `gseer search <query>` (P S C) | Search the index with GQL (`--facets`, `--mode`, `--limit`, `--sort`, `--explain`, `--validate`, `-o json`) |
-| `gseer host <ip\|hostname\|domain>` (S) | Read-only host inspection: asset + services + latest HTTP/TLS/fingerprints + provenance (`-o json`) |
-| `gseer export <query>` (P S) | Stream results as JSON / CSV / NDJSON (`--format`, `--out`, `--max`) |
-| `gseer setup` (P S) | `--personal` initializes the single-file personal mode; `--self-hosted` runs the hardened deployment order (`--with-compose [--full]`, `--load-fixtures`, `--purge-fixtures`, `--reset-runtime-password`) |
-| `gseer doctor` (P S C) | Diagnose config / DB / schema / index / privilege-audit health (read-only; personal mode checks the SQLite file, migration state, and index) |
-| `gseer server start\|status\|stop` (S) | Manage the local API + dashboard (start runs the fail-closed privilege audit before binding) |
-| `gseer source add\|list\|enable\|disable` (S) | Register and manage passive data sources |
-| `gseer collect run\|status\|redrive` (S) | Run collectors; inspect jobs; re-drive dead letters |
-| `gseer suppress add\|list\|remove` (P S) | Manage the suppression policy |
-| `gseer rules list\|validate` (S) | Fingerprint rules (list; lint + false-positive tests) |
-| `gseer update --check\|--apply` | Verify / apply signed updates |
-| `gseer db migrate status\|diagnose\|force` (S) | Inspect and recover schema migrations |
-| `gseer db backup\|restore` (P) | Consistent personal-mode snapshot (VACUUM INTO) and atomic restore; self-hosted backups use `pg_dump` (`docs/DEPLOYMENT.md`) |
-| `gseer version` | Version, commit, build info |
-| `gseer completion bash\|zsh\|fish\|powershell` | Shell completion |
+| Equality | `port=443`, `title="Login"` |
+| Comparison | `status_code>=200`, `after="2026-01-01"` |
+| Boolean | `&&`, `\|\|`, `!`, parentheses |
+| Wildcards | `ip*="203.0.113.*"` (fuzzy `*=`) |
+| Containment | `ip IN_CIDR "…/24"`, `domain IN_DOMAIN "…"` |
+| Free text | `"wordpress"` (quoted terms across stored text surfaces) |
+| Field aliases | `host`, `org`, `status_code`, `cert.subject.cn` |
+| Derived booleans | `is_domain`, `is_ipv6`, `cert.is_expired` |
 
-Planned but **not** in this release: `gseer scan`, `gseer asset`.
-Invoking them prints a pointer and exits with code 64 — no scanning
-exists in GSEER.
+Wrong field names get helpful errors ("Unknown field: prt / Did you mean:
+port"), and `--validate` checks a query without touching the database.
 
-## Dashboard
+## 6. Data Collection
 
-`gseer server start` serves a server-rendered dashboard at
-`http://127.0.0.1:8443/` (loopback by default). It is read-only
-(GET-only, no cookies, no login) and runs the same `SearchService` as
-the CLI: the search box accepts GQL, results show the same rows, and
-the facet panel mirrors `--facets`. The dashboard never triggers
-collection.
-
-## REST API
-
-The API lives under `/api/v1` on the same port. On the default loopback
-bind no token is required; a non-loopback bind **requires** one
-(`GSEER_TOKEN`, enforced by the config layer).
-
-| Endpoint | Method | Purpose |
-| --- | --- | --- |
-| `/api/v1/health` | GET | Liveness (`{"status":"ok"}`) |
-| `/api/v1/ready` | GET | Readiness |
-| `/api/v1/version` | GET | Version info |
-| `/api/v1/search` | GET / POST | Search (same GQL, same semantics as the CLI) |
-| `/api/v1/facets` | GET | Facet aggregates for a GQL filter |
-| `/api/v1/export` | GET | Streamed JSON / CSV / NDJSON (`Content-Disposition` attachment) |
-| `/api/v1/validate` | POST | Validate a GQL query |
-| `/api/v1/explain` | POST | Compiled query plan |
-| `/api/v1/stats` | GET | Index statistics |
+**Nothing collects uninvoked.** GSEER stores only what you collect or
+import — there is no preloaded global index. Collection is always one
+explicit command against sources YOU registered and enabled, targeting
+only identifiers you named or assets already in your index. Searching
+never triggers collection.
 
 ```bash
-curl 'http://127.0.0.1:8443/api/v1/search?q=port%3D%3D443'
-curl -H "Authorization: Bearer $GSEER_TOKEN" 'http://127.0.0.1:8443/api/v1/search?q=port%3D%3D443'
-```
+# Register a passive reverse-DNS source over the IPs in your index:
+gseer source add my-ptr --type ptr --seed-mode index --enable
 
-## Data Collection
+# Run it once (explicit; no daemon, no scheduler):
+gseer collect run --source my-ptr
 
-**Nothing collects uninvoked.** You register a source, enable it, and
-run it — one explicit command each. Targets are identifiers you named
-or assets already in your index; there are no third-party target lists
-and no enumeration. Collection requires the **self-hosted** profile
-(the registry that tracks sources, jobs, checkpoints, and dead letters
-is PostgreSQL-only; on a personal install the commands refuse with
-`E_PROFILE_UNSUPPORTED`).
+# What landed, when, and how much:
+gseer collect status
+gseer search 'hostname*="*.example.test"' --facets
 
-```bash
-# Register a passive DNS source (targets = domains you choose)
-gseer source add my-dns --type dns --seed-mode config \
-    --seeds example.net,example.org --enable --yes
-
-# Run it once (explicit; no daemon, no scheduler)
-gseer collect run --source my-dns
-
-# What landed (passive facts are asset-level: a DNS answer proves the
-# name was published — it never invents ports, banners or HTTP titles)
-gseer search 'domain IN_DOMAIN "example.net"'
-
-# Bookkeeping and recovery
-gseer collect status                       # jobs, checkpoints, dead letters
+# Bookkeeping and recovery:
 gseer collect redrive --all                # re-ingest dead-lettered records
-gseer collect redrive --source my-dns --discard
-
-# Keep classes of records out of your index entirely
-gseer suppress add cidr 10.0.0.0/8 --reason "RFC1918"
-gseer suppress add domain_suffix internal.example --reason "our own space"
-gseer suppress list
+gseer suppress add cidr 10.0.0.0/8 --reason "RFC1918"   # keep ranges out
 ```
 
-Connector status in v0.1.0:
+Connector register (verdicts enforced in code — see
+[`docs/SOURCES.md`](docs/SOURCES.md) for the full terms review):
 
-| Connector | Status |
-| --- | --- |
-| `dns` | **Operational** — verified end-to-end against operator-chosen names |
-| `ip2asn` | Reviewed and enableable (Team Cymru free community service) |
-| `rdap` | **Disabled** — RIR terms do not grant indexing/redistribution yet |
-| `ct` (crt.sh) | **Disabled** — no published terms covering automated collection |
+| Connector | What it gathers | Status |
+| --- | --- | --- |
+| `dns` | A/AAAA/CNAME answers for operator-named domains | **Operational** |
+| `ptr` | reverse-DNS (PTR) names for operator-named addresses | **Operational** (v0.3.0) |
+| `ip2asn` | ASN / network-owner enrichment (Team Cymru free community service, DNS interface) | **Operational** |
+| `rdap` | RIR registration data | **Disabled** — provider terms do not grant indexing/redistribution yet |
+| `ct` | certificate-transparency aggregation | **Disabled** — no published terms covering indexing/reuse |
 
-Disabled connectors are enforced in code: enabling or running them
-refuses with `E_SOURCE_TERMS`. Verdicts and the review register live in
-`docs/SOURCES.md`.
+Personal mode (SQLite) supports the full collection surface since v0.3.0:
+register, enable, run, status, re-drive, suppression — all against your
+single local file.
 
-## Configuration
+## 7. Database and local storage
 
-Precedence: CLI flags > environment variables > YAML config file >
-defaults. The config file lives at `~/.gseer/config.yaml` (override
-with `--config` or `GSEER_CONFIG`); see `.env.example` for the full
-annotated set.
+**Personal mode (default).** One embedded SQLite file at
+`~/.gseer/gseer.db` (created `0600`, parent directory `0700`). No server,
+no Docker, no account. Everything — assets, observations, evidence,
+collection bookkeeping, suppression rules — lives in that one file, so:
+
+```bash
+gseer db backup --out backup.db     # consistent snapshot (VACUUM INTO), 0600
+gseer db restore backup.db          # atomic replace, old file kept aside
+# Move to another machine: copy gseer.db (and config.yaml), done.
+```
+
+**Self-hosted mode.** PostgreSQL 16+ as the engine, credential separation
+(operator vs. least-privilege `gseer_app` runtime), a fail-closed privilege
+audit before the server binds, and Docker compose generation:
+
+```bash
+gseer setup --self-hosted --with-compose   # writes compose + .env, then follows docs/QUICKSTART.md
+```
+
+Upgrades never delete your data: migrations are versioned, idempotent, and
+recoverable (`gseer db migrate status|diagnose|force`).
+
+## 8. Configuration
+
+Zero configuration is required for the basic flow. When you do want to
+configure: precedence is CLI flags > environment variables > YAML config
+file > defaults; the file lives at `~/.gseer/config.yaml` (override with
+`--config` or `GSEER_CONFIG`). See `.env.example` for the annotated set.
 
 | Variable | Meaning |
 | --- | --- |
-| `GSEER_PROFILE` | `client` (default) or `self-hosted` |
-| `GSEER_DB_DSN` | Full PostgreSQL DSN for the **operator** credential (overrides the components below) |
-| `GSEER_DB_RUNTIME_DSN` | Full PostgreSQL DSN for the **runtime** credential `gseer_app` (required by `server start`; printed once by setup) |
-| `GSEER_DB_HOST` / `GSEER_DB_PORT` / `GSEER_DB_USER` / `GSEER_DB_PASSWORD` / `GSEER_DB_NAME` / `GSEER_DB_SSLMODE` | DSN components (operator credential) |
-| `GSEER_LISTEN` | Server bind address (default `127.0.0.1:8443`; non-loopback requires `GSEER_TOKEN`) |
-| `GSEER_TOKEN` | API token for the REST API (`Authorization: Bearer …`) |
-| `GSEER_LOG_LEVEL` / `GSEER_LOG_FORMAT` | `debug\|info\|warn\|error` / `text\|json` |
+| `GSEER_PROFILE` | `personal` (default after first run), `client`, or `self-hosted` |
+| `GSEER_DB_DSN` | PostgreSQL DSN (operator credential) for the self-hosted profile |
+| `GSEER_DB_RUNTIME_DSN` | Least-privilege runtime DSN (`gseer_app`; required by `server start`) |
+| `GSEER_LISTEN` | Server bind (default `127.0.0.1:8443`; non-loopback requires `GSEER_TOKEN`) |
+| `GSEER_TOKEN` | API token for the REST API |
 | `GSEER_POLICY_EVALUATION_FIXTURES` | Standing consent for the fixture load/purge gate |
 | `GSEER_FINGERPRINTS_RULES_DIR` / `GSEER_FINGERPRINTS_DISABLED` | Operator fingerprint rules / kill switch |
 | `GSEER_UPDATE_MANIFEST_URL` | Signed-update channel |
-| `GSEER_SERVER_TRUSTED_PROXIES` | Reverse-proxy CIDRs allowed to set `X-Forwarded-For` |
 
-`gseer setup --with-compose` generates a `.env` (mode 0600) with a
-random database password — never commit a real `.env`.
+Every command has `--help`; `gseer --help` lists the live command set
+(including `gseer version`, `gseer doctor`, and shell completion).
 
-## Troubleshooting
+## 9. Troubleshooting
 
 | Symptom | What it means / what to do |
 | --- | --- |
-| `E_CONFIG_REQUIRED: client.endpoint …` right after `setup --self-hosted` | Setup provisioned the database; your shell is still in the `client` profile. Export the handoff: `export GSEER_PROFILE=self-hosted`, `export GSEER_DB_DSN="$(grep '^GSEER_DSN=' .env | cut -d= -f2-)"` and the runtime DSN from setup (Quickstart step 4–5). |
-| `E_PROFILE_UNSUPPORTED` on `source`/`collect`/`host` (personal install) | Those commands need the self-hosted profile: the collection registry and the host report are PostgreSQL-only. For evaluation data run `gseer setup --load-fixtures` (personal); for real collection deploy Path B (`gseer setup --self-hosted --with-compose`). |
-| `API_E_UNAUTHORIZED` (client search, exit 5) | The server requires a Bearer token and the CLI client cannot present one — query with `curl -H "Authorization: Bearer $GSEER_TOKEN" …`, or from inside the compose network. |
-| `E_RUNTIME_CREDENTIAL_REQUIRED` on `server start` (exit 3) | No runtime credential configured. `gseer setup --self-hosted` provisions `gseer_app` and prints `GSEER_DB_RUNTIME_DSN` once — export it. |
-| `E_RUNTIME_CREDENTIAL_MISMATCH` (exit 5) | `database.runtime_dsn` connects as something other than `gseer_app` (e.g. the operator credential). Point it at the gseer_app credential — the server never serves traffic under another identity. |
-| `E_PRIVILEGE_AUDIT_FAILED` (exit 5) | The fail-closed audit found a real deployment problem (missing grants, unsafe roles, escalation path). Fix the deployment per `docs/DEPLOYMENT.md` §3.4 — never grant `gseer_app` more privileges to "make it pass". |
-| `E_BOOTSTRAP` during setup | The operator credential could not create/validate the hardened roles. Run setup with the database-owner credential, or remediate the named role state. |
-| `E_DB_UNREACHABLE: cannot reach PostgreSQL` | The database is not running. `docker compose up -d db`, then `docker compose ps db` until healthy. |
-| `E_CONFIG_INSECURE: non-loopback bind requires a token` | Set `GSEER_TOKEN` (or `server.token`) before binding a non-loopback address. |
+| `commit: unknown` / `built_at: unknown` in `gseer version` | Normal for `go install` builds — module downloads carry no VCS metadata. Version is still correct; release binaries from GitHub Releases carry both fields. |
+| `E_CONFIG_REQUIRED: client.endpoint …` | Your shell resolves to the client profile. Run `gseer` once to initialize personal mode, or `gseer setup --personal`. |
+| `E_CLIENT_ONLY` on `server start` / `host` | That command needs a local profile. Personal mode keeps the search engine local; `server start` is a self-hosted-profile command. |
 | `E_SOURCE_TERMS` when enabling/running a source | That connector's provider terms are not cleared for automated collection (`docs/SOURCES.md`). This is a policy gate, not a bug. |
 | `E_QUERY_*` on search/facets | The GQL did not validate. The error names the position and a `Try:` fix; `gseer search '<q>' --validate` checks without touching the DB. |
-| `E_UPDATE_UNSIGNED` | The update manifest has no valid signature against the embedded key. It is refused — see `docs/UPDATE.md`. |
 | Doctor reports `HINT index: EMPTY` | Normal on a fresh install. Load fixtures for evaluation, or register a source and run `gseer collect run`. |
+| `E_DB_BACKUP: …` | The backup target must differ from the live database file. |
 | Migration failed mid-setup | `gseer db migrate status`, then `gseer db migrate diagnose`; `force` exists for recovery and asks for confirmation. |
-| `server start` says the port is taken | Another instance is running (`gseer server status`) or something else uses 8443 — change `GSEER_LISTEN`. |
 
-## Security, Limitations, and License
+## 10. Uninstall and backup
 
-**Security posture**
+```bash
+gseer db backup --out ~/gseer-backup.db   # 1. take a snapshot first
+rm "$(command -v gseer)"                  # 2. remove the binary (GOPATH/bin)
+rm -rf ~/.gseer                           # 3. remove data + config (this deletes your index!)
+```
+
+To start over but keep your data: keep `gseer.db`, delete only
+`~/.gseer/config.yaml`, and run `gseer` again — it re-initializes around
+the existing database.
+
+## Security, limitations, license
 
 - **Search ≠ Scan** — no code path in this repository port-scans,
   banner-grabs, or enumerates the internet. A query can only read.
-  Planned active observation (`gseer scan`) does not exist in this
-  release; invoking it exits 64.
+  Planned active observation (`gseer scan`) does not exist; invoking it
+  exits 64.
 - **Nothing runs uninvoked** — no daemon, no scheduler. Every collection
   run is an explicit operator command, gated by the terms register.
-- **Least-privilege runtime, fail-closed** — the server serves traffic
-  ONLY as the least-privilege `gseer_app` credential, and the fail-closed
-  effective-privilege audit refuses startup (exit 5) unless the
-  deployment's roles/grants/ownership are exactly the approved matrix.
-  There is no bypass, flag, or override (`docs/DEPLOYMENT.md`).
-- **Suppression is enforced twice** — in every ingestion path AND by a
-  database trigger that refuses suppressed writes if any path forgets;
-  after migration 0016 all suppression writes go through the
-  `gseer_policy` SECURITY DEFINER functions, never direct DML.
-- **Loopback by default** — the DB binds `127.0.0.1` only (compose full
-  stack: no host port at all); the server binds loopback and a
-  non-loopback bind requires a token; security headers on every
-  response; API tokens are hashed at rest.
-- **Updates are verified before anything is downloaded** — Ed25519
-  signature against the key embedded in the binary, then version gate,
-  platform match, SHA-256, atomic replace with rollback.
-
-**Limitations (honest)**
-
-- **Self-hosted index only.** A fresh install has an empty database;
-  you search exactly what your sources collected. There is **no**
-  global, hosted-engine-scale index — GSEER is the engine, not a
-  hosted service.
-- **Passive facts are asset-level.** A DNS answer or a certificate-log
-  entry proves an identifier was published; it never invents a port, a
-  banner, or an HTTP title. Service-level rows appear only from
-  evidence that actually carries them; DNS-discovered IPs do not mirror
-  the resolving name into the asset's hostname/domain columns (the name
-  is on the observation's evidence — `docs/DEPLOYMENT.md` §7).
-- **RDAP and crt.sh/CT are disabled** until their providers' terms are
-  reviewed and approved. The enforcement is in code, not just docs.
-- **Fingerprint coverage is deliberately conservative** — the seed set
-  classifies only well-documented header/banner evidence; CMS/framework
-  identification extends via contributions (`docs/RULES.md`).
-- **No exploitation signatures.** The rule linter rejects anything
-  shaped like an exploit or credential payload.
-
-**License**
+- **Passive facts are asset-level** — a DNS/PTR answer proves a name was
+  published; it never invents ports, banners, or HTTP titles.
+- **Personal index only** — you search exactly what your sources
+  collected. GSEER is the engine, not a hosted service.
+- **RDAP and CT stay disabled** until their providers' terms clear; the
+  enforcement is in code, not just docs.
+- **Signed updates** — `gseer update` verifies an Ed25519-signed manifest
+  before anything is downloaded or replaced.
 
 GNU Affero General Public License v3.0 — see [`LICENSE`](LICENSE).
-Contributions are welcome: fingerprint rules (`docs/RULES.md`) are the
-easiest starting point; every Go file carries the AGPL header and CI
-enforces it.
+Contributions welcome: fingerprint rules ([`docs/RULES.md`](docs/RULES.md))
+are the easiest starting point.
 
 ## Documentation
 
 - [`docs/QUICKSTART.md`](docs/QUICKSTART.md) — the canonical fresh-install workflow
 - [`docs/INSTALL.md`](docs/INSTALL.md) — install methods, checksums, build from source
-- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — credential model, hardened startup, the fail-closed privilege audit
-- [`docs/DOCKER.md`](docs/DOCKER.md) — full stack: startup, upgrade, backup/restore, recovery
-- [`docs/UPDATE.md`](docs/UPDATE.md) — the signed-update chain, the v0.1.0 → v0.2.0 upgrade path, key ceremony, recovery
-- [`docs/SOURCES.md`](docs/SOURCES.md) — passive data-source review register (terms verdicts)
-- [`docs/RULES.md`](docs/RULES.md) — fingerprint rule format, confidence tiers, contributions
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) — self-hosted credential model, hardened startup
+- [`docs/DOCKER.md`](docs/DOCKER.md) — full Docker stack
+- [`docs/UPDATE.md`](docs/UPDATE.md) — the signed-update chain
+- [`docs/SOURCES.md`](docs/SOURCES.md) — data-source review register (where collection data comes from)
+- [`docs/RULES.md`](docs/RULES.md) — fingerprint rule format and contributions
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — release register (what is live per release)
 - [`CHANGELOG.md`](CHANGELOG.md) — per-release changes
-- [`docs/releases/`](docs/releases/) — per-release release notes (v0.1.0, v0.2.0, v0.2.1)
+- [`docs/releases/`](docs/releases/) — per-release notes

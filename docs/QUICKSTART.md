@@ -1,10 +1,50 @@
-# GSEER — Quickstart (v0.2.0)
+# GSEER — Quickstart (v0.3.0)
 
-> Canonical fresh-install workflow for the self-hosted release.  Every
-> command below was executed against the real v0.2.0 binary during the
-> release-readiness round (PostgreSQL 16.15 **and** 17.2, fresh
-> databases both times).  Credential model, the hardened startup
-> sequence, and the fail-closed privilege audit: `docs/DEPLOYMENT.md`.
+> Canonical fresh-install workflow.  Every command below was executed
+> against the real binary during the release-readiness rounds.  Two
+> paths:
+>
+> - **Path A — personal mode (default, zero-config):** one embedded
+>   SQLite file; no database server, no Docker, no account.
+> - **Path B — self-hosted:** PostgreSQL 16+ with the hardened
+>   deployment order.  Credential model and the fail-closed privilege
+>   audit: `docs/DEPLOYMENT.md`.
+
+## Path A — personal mode (zero-config)
+
+Install once, then run:
+
+```bash
+go install -v github.com/Lutfifakee-Project/gseer/cmd/gseer@latest
+gseer
+#   Welcome to GSEER — internet-asset search engine.
+#   [ ok  ] personal database: ~/.gseer/gseer.db      (one SQLite file, 0600)
+#   [ ok  ] migrations: schema at head v1 (AT_HEAD)
+#   [ ok  ] config written: ~/.gseer/config.yaml (profile=personal)
+gseer doctor
+#   4 PASS, 0 FAIL — index reported EMPTY (that is honest)
+
+# Evaluation data (labeled SYNTHETIC everywhere; QS-6 consent gate):
+gseer setup --load-fixtures
+gseer search 'port==443 && title CONTAINS "login"'
+
+# Real data — your own collection (nothing runs uninvoked):
+gseer source add my-dns --type dns --seed-mode config \
+    --seeds example.net,example.org --enable --yes
+gseer collect run --source my-dns
+
+# Backup / restore (one file — copy it anywhere):
+gseer db backup --out backup.db
+gseer db restore backup.db
+```
+
+That is the whole personal workflow: the binary, one SQLite file, and
+your collection.  The same `source`/`collect`/`suppress`/`export`
+surface as self-hosted works against the single file.
+
+---
+
+## Path B — self-hosted (PostgreSQL 16+)
 
 ## 0. Prerequisites
 
@@ -138,8 +178,8 @@ gseer source list                     # registered sources with terms verdicts
 gseer source disable my-dns           # manage: enable/disable any time
 ```
 
-Connector verdicts are terms-reviewed (`docs/SOURCES.md`): `dns` and
-`ip2asn` are enableable; `rdap` and `ct` refuse in code
+Connector verdicts are terms-reviewed (`docs/SOURCES.md`): `dns`,
+`ptr`, and `ip2asn` are enableable; `rdap` and `ct` refuse in code
 (`E_SOURCE_TERMS`) pending provider authorization.
 
 ## 7. Authorized collection — explicit, one command per run
