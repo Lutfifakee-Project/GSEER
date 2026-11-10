@@ -427,7 +427,7 @@ func (b *builder) compileComparison(c *ast.Comparison, alias string, branch *pla
 	if sql, ok := b.compileDerived(c, alias); ok {
 		return sql
 	}
-	if sql, ok := b.compileHostOrIp(c, alias); ok {
+	if sql, ok := b.compileHostOrIP(c, alias); ok {
 		return sql
 	}
 	col := columnName(c.Field)
@@ -500,10 +500,10 @@ func (b *builder) compileDerived(c *ast.Comparison, alias string) (string, bool)
 	return "", false
 }
 
-// compileHostOrIp lowers the compatibility field host_or_ip — the ip
+// compileHostOrIP lowers the compatibility field host_or_ip — the ip
 // column stores the canonical address WITHOUT any /32 suffix (storage
 // contract), so plain text equality matches.
-func (b *builder) compileHostOrIp(c *ast.Comparison, alias string) (string, bool) {
+func (b *builder) compileHostOrIP(c *ast.Comparison, alias string) (string, bool) {
 	if c.Field != "host_or_ip" {
 		return "", false
 	}

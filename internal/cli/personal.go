@@ -126,7 +126,7 @@ func runSetupPersonal(cmd *cobra.Command, dbPath string, loadFixtures bool) erro
 	if err != nil {
 		return err
 	}
-	defer res.DB.Close()
+	defer func() { _ = res.DB.Close() }()
 
 	st, err := sqlite.Migrate(ctx, res.DB)
 	if err != nil {
@@ -301,7 +301,7 @@ func runPersonalSuppressAdd(cmd *cobra.Command, kind suppress.Kind, value, reaso
 	if err != nil {
 		return err
 	}
-	defer res.DB.Close()
+	defer func() { _ = res.DB.Close() }()
 
 	rule, existed, err := store.AddSuppression(ctx, in)
 	if err != nil {
@@ -349,7 +349,7 @@ func runPersonalSuppressList(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	defer res.DB.Close()
+	defer func() { _ = res.DB.Close() }()
 	rules, err := store.ListSuppressions(cmd.Context())
 	if err != nil {
 		return err
@@ -381,7 +381,7 @@ func runPersonalSuppressRemove(cmd *cobra.Command, id int64) error {
 	if err != nil {
 		return err
 	}
-	defer res.DB.Close()
+	defer func() { _ = res.DB.Close() }()
 	removed, err := store.RemoveSuppression(cmd.Context(), id)
 	if err != nil {
 		return err
@@ -421,7 +421,7 @@ func runPersonalDBBackup(cmd *cobra.Command, outPath string) error {
 	if err != nil {
 		return err
 	}
-	defer res.DB.Close()
+	defer func() { _ = res.DB.Close() }()
 	// VACUUM INTO produces a consistent snapshot; wal files are not needed.
 	if _, err := store.DB.Exec(`VACUUM INTO ?`, sqlite.BuildDSN(outPath)); err != nil {
 		// VACUUM INTO takes the raw (non-file:) path in most builds; retry
@@ -430,9 +430,10 @@ func runPersonalDBBackup(cmd *cobra.Command, outPath string) error {
 			return fmt.Errorf("E_DB_BACKUP: cannot write the backup snapshot: %v / %v", err, err2)
 		}
 	}
-	if err := os.Chmod(outPath, 0o600); err == nil || isWindowsNoop(err) {
-		// permission enforced (or platform without mode bits)
-	}
+	// Best-effort hardening: VACUUM INTO copies the source file's mode;
+	// re-assert 0600 on the snapshot.  chmod is a best-effort no-op on
+	// platforms without POSIX mode bits (see open.go isNoChmodOS).
+	_ = os.Chmod(outPath, 0o600)
 	st, serr := os.Stat(outPath)
 	if serr != nil {
 		return fmt.Errorf("E_DB_BACKUP: snapshot missing after VACUUM INTO: %w", serr)
@@ -441,8 +442,6 @@ func runPersonalDBBackup(cmd *cobra.Command, outPath string) error {
 	printf(cmd.OutOrStdout(), "Restore with: gseer db restore %s  (replaces the current database file)\n", outPath)
 	return nil
 }
-
-func isWindowsNoop(err error) bool { return err == nil }
 
 // runPersonalDBRestore atomically replaces the live database file with
 // the backup (the old file moves aside first — a failed restore is
@@ -491,24 +490,21 @@ func runPersonalDBRestore(cmd *cobra.Command, backupPath string, yes bool) error
 }
 
 func copyFile(src, dst string, mode os.FileMode) error {
-	in, err := os.Open(src)
+	// src/dst are operator-supplied paths — that IS the db
+	// backup/restore contract (the operator names the file), not an
+	// inclusion vulnerability.
+	in, err := os.Open(src) //nolint:gosec // G304: operator-supplied backup/restore path is the feature
 	if err != nil {
 		return err
 	}
-	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+	defer func() { _ = in.Close() }()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode) //nolint:gosec // G304: operator-supplied backup/restore path is the feature
 	if err != nil {
 		return err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 	if _, err := io.Copy(out, in); err != nil {
 		return err
 	}
 	return out.Sync()
-}
-
-// isPersonalProfile reports whether the loaded config selects the
-// personal engine.
-func isPersonalProfile(cfg *config.Config) bool {
-	return cfg != nil && cfg.Profile == config.ProfilePersonal
 }

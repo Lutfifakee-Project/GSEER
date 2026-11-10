@@ -158,10 +158,7 @@ const freshnessExpr = `CASE
 
 // collectFacet runs one dimension's aggregate.
 func (s *Service) collectFacet(ctx context.Context, dim, where string, whereArgs []any, countExpr string, maxValues int) (*search.Facet, error) {
-	selectExpr, from, notNull, extraArgs, err := s.facetSQL(dim)
-	if err != nil {
-		return nil, err
-	}
+	selectExpr, from, notNull, extraArgs := s.facetSQL(dim)
 	facet := &search.Facet{Name: dim}
 	if selectExpr == "" {
 		return facet, nil
@@ -174,7 +171,10 @@ func (s *Service) collectFacet(ctx context.Context, dim, where string, whereArgs
 	// GROUP BY 1 (the output ordinal) — the select expression may
 	// contain ? placeholders (freshness thresholds); repeating it in
 	// GROUP BY would count as additional placeholders.
-	sqlText := fmt.Sprintf(
+	// The interpolated %s parts are internal fixed expressions
+	// (facetSQL's whitelist), never user text; user values bind via
+	// the ? placeholders in where/extraArgs.
+	sqlText := fmt.Sprintf( //nolint:gosec // G201: identifiers are the fixed facetSQL whitelist; values bind via ? placeholders
 		"SELECT %s AS value, %s AS n FROM %s WHERE (%s)%s GROUP BY 1 ORDER BY n DESC, value ASC LIMIT %d",
 		selectExpr, countExpr, from, where, notNull, maxValues,
 	)
@@ -185,7 +185,7 @@ func (s *Service) collectFacet(ctx context.Context, dim, where string, whereArgs
 	if err != nil {
 		return nil, &search.QueryError{Code: "E_QUERY_EXEC", Detail: err.Error(), Next: "check the database; try: gseer doctor"}
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var v sql.NullString
 		var n int64
@@ -206,26 +206,28 @@ func (s *Service) collectFacet(ctx context.Context, dim, where string, whereArgs
 }
 
 // facetSQL renders one dimension's aggregate (the SQLite spellings).
-func (s *Service) facetSQL(dim string) (selectExpr, from, notNull string, extraArgs []any, err error) {
+// Unknown dimensions return an empty selectExpr (the caller reports an
+// empty facet), so the function is total — no error return.
+func (s *Service) facetSQL(dim string) (selectExpr, from, notNull string, extraArgs []any) {
 	switch dim {
 	case search.FacetPort:
-		return `CAST(search_index."port" AS TEXT)`, "search_index", ` AND search_index."port" IS NOT NULL`, nil, nil
+		return `CAST(search_index."port" AS TEXT)`, "search_index", ` AND search_index."port" IS NOT NULL`, nil
 	case search.FacetProtocol:
-		return `search_index."protocol"`, "search_index", ` AND search_index."protocol" IS NOT NULL`, nil, nil
+		return `search_index."protocol"`, "search_index", ` AND search_index."protocol" IS NOT NULL`, nil
 	case search.FacetService:
-		return `search_index."name"`, "search_index", ` AND search_index."name" IS NOT NULL`, nil, nil
+		return `search_index."name"`, "search_index", ` AND search_index."name" IS NOT NULL`, nil
 	case search.FacetCountry:
-		return `search_index."geo_country"`, "search_index", ` AND search_index."geo_country" IS NOT NULL`, nil, nil
+		return `search_index."geo_country"`, "search_index", ` AND search_index."geo_country" IS NOT NULL`, nil
 	case search.FacetTechnology:
 		return `tech.value`,
 			`search_index, json_each(CASE WHEN json_valid(search_index."technologies") THEN search_index."technologies" ELSE '[]' END) AS tech`,
-			` AND tech.value <> ''`, nil, nil
+			` AND tech.value <> ''`, nil
 	case search.FacetSource:
 		return `src.value`,
 			`search_index, json_each(CASE WHEN json_valid(search_index."sources") THEN search_index."sources" ELSE '[]' END) AS src`,
-			` AND src.value <> ''`, nil, nil
+			` AND src.value <> ''`, nil
 	case search.FacetFreshness:
-		return freshnessExpr, "search_index", "", s.freshnessArgs(), nil
+		return freshnessExpr, "search_index", "", s.freshnessArgs()
 	}
-	return "", "search_index", "", nil, nil
+	return "", "search_index", "", nil
 }

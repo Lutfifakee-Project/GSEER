@@ -159,7 +159,7 @@ func (s *Service) exec(ctx context.Context, plan *Plan) ([]search.Row, error) {
 	if err != nil {
 		return nil, mapPlanError(err, plan)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := make([]search.Row, 0, len(plan.ProjectionFields))
 	for rows.Next() {
 		r, err := scanRow(rows)

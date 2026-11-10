@@ -127,7 +127,9 @@ func ensureDir0700(dir string) error {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("sqlite: cannot create directory %q: %w", dir, err)
 	}
-	if err := os.Chmod(dir, 0o700); err != nil && !isNoChmodOS(err) {
+	// 0700 on a DIRECTORY is the SQ-04 least-privilege contract
+	// (gosec G302 is written for files, where ≤0600 applies).
+	if err := os.Chmod(dir, 0o700); err != nil && !isNoChmodOS(err) { //nolint:gosec // G302: directory mode 0700 is the SQ-04 contract (G302 targets files)
 		return fmt.Errorf("sqlite: cannot chmod 0700 %q: %w", dir, err)
 	}
 	return nil

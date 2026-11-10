@@ -710,7 +710,7 @@ func (b *builder) compileComparison(c *ast.Comparison, alias string, branch *Bra
 	if sql, ok := b.compileDerived(c, alias); ok {
 		return sql
 	}
-	if sql, ok := b.compileHostOrIp(c, alias); ok {
+	if sql, ok := b.compileHostOrIP(c, alias); ok {
 		return sql
 	}
 	col := columnName(c.Field)
@@ -794,14 +794,14 @@ func (b *builder) compileDerived(c *ast.Comparison, alias string) (string, bool)
 	return "", false
 }
 
-// compileHostOrIp lowers the compatibility field host_or_ip (the user
+// compileHostOrIP lowers the compatibility field host_or_ip (the user
 // alias `host`): a match over BOTH the hostname and the ip columns,
 // so `host="portal.example"` and `host="203.0.113.10"` both resolve.
 // The empty value keeps the hostname presence semantics (`host=""` =
 // no hostname).  The second result is false when the node is not a
 // host_or_ip comparison (the caller falls through to the normal
 // column path).
-func (b *builder) compileHostOrIp(c *ast.Comparison, alias string) (string, bool) {
+func (b *builder) compileHostOrIP(c *ast.Comparison, alias string) (string, bool) {
 	if c.Field != "host_or_ip" {
 		return "", false
 	}

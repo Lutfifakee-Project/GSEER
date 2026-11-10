@@ -39,15 +39,3 @@ func parsePrefix(s string) (netip.Prefix, netip.Addr, error) {
 	m := p.Masked()
 	return m, m.Addr(), nil
 }
-
-// ipInPrefix reports whether the canonical address text addrText is
-// inside the masked prefix p.  Invalid inputs return false (the SQL
-// function maps invalid → NULL → no match; here it feeds the compile-
-// time error path only for the PREFIX value, never for column data).
-func ipInPrefix(addrText string, p netip.Prefix) bool {
-	a, err := netip.ParseAddr(addrText)
-	if err != nil {
-		return false
-	}
-	return p.Contains(a.Unmap())
-}

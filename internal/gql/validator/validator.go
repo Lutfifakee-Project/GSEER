@@ -374,113 +374,136 @@ func (v *validator) visitComparison(c *ast.Comparison) error {
 // rejects a quoted value (GQL_E_TYPE + the unquoted rewrite), a STRING
 // field rejects a bare integer when the field is not INT, timestamps
 // check their RFC 3339 shape, lists require CONTAINS (already op-gated).
+// The per-value-shape rules live in the checkIntValueType /
+// checkStrValueType / checkListValueType helpers.
 func checkType(f *Field, key string, c *ast.Comparison) error {
-	line, col := c.Pos()
 	switch v := c.Value.(type) {
 	case *ast.IntValue:
-		switch f.Type {
-		case TypeInt:
+		return checkIntValueType(f, key, c, v)
+	case *ast.StrValue:
+		return checkStrValueType(f, key, c, v)
+	case *ast.ListValue:
+		return checkListValueType(f, key, c, v)
+	}
+	return nil
+}
+
+// checkIntValueType validates a bare integer against the field type.
+func checkIntValueType(f *Field, key string, c *ast.Comparison, v *ast.IntValue) error {
+	line, col := c.Pos()
+	switch f.Type {
+	case TypeInt:
+		return nil
+	case TypeString, TypeBool, TypeList:
+		return &Error{
+			Code: CodeType,
+			Detail: fmt.Sprintf("field %s takes a %s value, got the integer %d at line %d, column %d",
+				key, f.Type, v.N, line, col),
+			Why:  "GQL typing is strict: quoted values are strings, bare numbers are integers",
+			Next: fmt.Sprintf("try: %s %s \"%d\"", key, c.Op, v.N),
+			Line: line, Col: col,
+		}
+	case TypeTime:
+		return &Error{
+			Code: CodeType,
+			Detail: fmt.Sprintf("field %s takes an RFC 3339 timestamp, got the integer %d at line %d, column %d",
+				key, v.N, line, col),
+			Why:  "timestamps are quoted strings in GQL",
+			Next: fmt.Sprintf("try: %s %s \"2026-01-01T00:00:00Z\"", key, c.Op),
+			Line: line, Col: col,
+		}
+	}
+	return nil
+}
+
+// checkStrValueType validates a quoted string against the field type
+// (with the compat layer's quoted-integer coercion for INT fields).
+func checkStrValueType(f *Field, key string, c *ast.Comparison, v *ast.StrValue) error {
+	line, col := c.Pos()
+	if c.Op == ast.OpMatch && v.S == "" {
+		return &Error{
+			Code:   CodeType,
+			Detail: fmt.Sprintf("empty match pattern at line %d, column %d", line, col),
+			Why:    "the wildcard pattern needs at least one character",
+			Next:   "try: hostname *= \"*.example.\"  (* = any run, ? = one char)",
+			Line:   line, Col: col,
+		}
+	}
+	switch f.Type {
+	case TypeInt:
+		// Compat layer: a quoted value that parses as an
+		// integer is coerced in place (compat engines quote
+		// every value, so port=="443" must behave like
+		// port==443).  Non-numeric quoted strings stay a
+		// strict-typing error.
+		if n, cerr := strconv.ParseInt(v.S, 10, 64); cerr == nil {
+			c.Value = &ast.IntValue{N: n}
 			return nil
-		case TypeString, TypeBool, TypeList:
+		}
+		return &Error{
+			Code: CodeType,
+			Detail: fmt.Sprintf("field %s takes an integer, got the string %s at line %d, column %d",
+				key, quoteForMsg(v.S), line, col),
+			Why:  "the quoted value is not a valid integer for this field",
+			Next: fmt.Sprintf("try: %s %s 443   (or %s %s \"80,443\" with IN)", key, c.Op, key, c.Op),
+			Line: line, Col: col,
+		}
+	case TypeTime:
+		if _, err := parseRFC3339(v.S); err != nil {
 			return &Error{
 				Code: CodeType,
-				Detail: fmt.Sprintf("field %s takes a %s value, got the integer %d at line %d, column %d",
-					key, f.Type, v.N, line, col),
-				Why:  "GQL typing is strict: quoted values are strings, bare numbers are integers",
-				Next: fmt.Sprintf("try: %s %s \"%d\"", key, c.Op, v.N),
-				Line: line, Col: col,
-			}
-		case TypeTime:
-			return &Error{
-				Code: CodeType,
-				Detail: fmt.Sprintf("field %s takes an RFC 3339 timestamp, got the integer %d at line %d, column %d",
-					key, v.N, line, col),
-				Why:  "timestamps are quoted strings in GQL",
+				Detail: fmt.Sprintf("field %s takes an RFC 3339 timestamp, got %s at line %d, column %d",
+					key, quoteForMsg(v.S), line, col),
+				Why:  "the value is not an RFC 3339 timestamp",
 				Next: fmt.Sprintf("try: %s %s \"2026-01-01T00:00:00Z\"", key, c.Op),
 				Line: line, Col: col,
 			}
 		}
-	case *ast.StrValue:
-		if c.Op == ast.OpMatch && v.S == "" {
-			return &Error{
-				Code:   CodeType,
-				Detail: fmt.Sprintf("empty match pattern at line %d, column %d", line, col),
-				Why:    "the wildcard pattern needs at least one character",
-				Next:   "try: hostname *= \"*.example.\"  (* = any run, ? = one char)",
-				Line:   line, Col: col,
-			}
-		}
-		switch f.Type {
-		case TypeInt:
-			// Compat layer: a quoted value that parses as an
-			// integer is coerced in place (compat engines quote
-			// every value, so port=="443" must behave like
-			// port==443).  Non-numeric quoted strings stay a
-			// strict-typing error.
-			if n, cerr := strconv.ParseInt(v.S, 10, 64); cerr == nil {
-				c.Value = &ast.IntValue{N: n}
-				return nil
-			}
+	case TypeDate:
+		if !isDateValue(v.S) {
 			return &Error{
 				Code: CodeType,
-				Detail: fmt.Sprintf("field %s takes an integer, got the string %s at line %d, column %d",
+				Detail: fmt.Sprintf("field %s takes a date (\"2006-01-02\") or RFC 3339 timestamp, got %s at line %d, column %d",
 					key, quoteForMsg(v.S), line, col),
-				Why:  "the quoted value is not a valid integer for this field",
-				Next: fmt.Sprintf("try: %s %s 443   (or %s %s \"80,443\" with IN)", key, c.Op, key, c.Op),
+				Why:  "the value is not a date",
+				Next: fmt.Sprintf("try: %s %s \"2026-01-31\"", key, c.Op),
 				Line: line, Col: col,
 			}
-		case TypeTime:
-			if _, err := parseRFC3339(v.S); err != nil {
-				return &Error{
-					Code: CodeType,
-					Detail: fmt.Sprintf("field %s takes an RFC 3339 timestamp, got %s at line %d, column %d",
-						key, quoteForMsg(v.S), line, col),
-					Why:  "the value is not an RFC 3339 timestamp",
-					Next: fmt.Sprintf("try: %s %s \"2026-01-01T00:00:00Z\"", key, c.Op),
-					Line: line, Col: col,
-				}
+		}
+	case TypeBool:
+		if v.S != "true" && v.S != "false" {
+			return &Error{
+				Code: CodeType,
+				Detail: fmt.Sprintf("field %s takes \"true\" or \"false\", got %s at line %d, column %d",
+					key, quoteForMsg(v.S), line, col),
+				Why:  "boolean fields accept only the two quoted literals",
+				Next: fmt.Sprintf("try: %s %s \"true\"", key, c.Op),
+				Line: line, Col: col,
 			}
-		case TypeDate:
-			if !isDateValue(v.S) {
-				return &Error{
-					Code: CodeType,
-					Detail: fmt.Sprintf("field %s takes a date (\"2006-01-02\") or RFC 3339 timestamp, got %s at line %d, column %d",
-						key, quoteForMsg(v.S), line, col),
-					Why:  "the value is not a date",
-					Next: fmt.Sprintf("try: %s %s \"2026-01-31\"", key, c.Op),
-					Line: line, Col: col,
-				}
-			}
-		case TypeBool:
-			if v.S != "true" && v.S != "false" {
-				return &Error{
-					Code: CodeType,
-					Detail: fmt.Sprintf("field %s takes \"true\" or \"false\", got %s at line %d, column %d",
-						key, quoteForMsg(v.S), line, col),
-					Why:  "boolean fields accept only the two quoted literals",
-					Next: fmt.Sprintf("try: %s %s \"true\"", key, c.Op),
-					Line: line, Col: col,
+		}
+	}
+	return nil
+}
+
+// checkListValueType validates each element against the field type.
+// Element typing mirrors the field type.  Quoted integers coerce in
+// place first, so `port IN (80, "443")` works like the compat layer's
+// single-value coercion.
+func checkListValueType(f *Field, key string, c *ast.Comparison, v *ast.ListValue) error {
+	line, col := c.Pos()
+	if f.Type == TypeInt {
+		for i, item := range v.Items {
+			if sv, ok := item.(*ast.StrValue); ok {
+				if n, cerr := strconv.ParseInt(sv.S, 10, 64); cerr == nil {
+					v.Items[i] = &ast.IntValue{N: n}
 				}
 			}
 		}
-	case *ast.ListValue:
-		// Element typing mirrors the field type.  Quoted integers
-		// coerce in place first, so `port IN (80, "443")` works like
-		// the compat layer's single-value coercion.
-		if f.Type == TypeInt {
-			for i, item := range v.Items {
-				if sv, ok := item.(*ast.StrValue); ok {
-					if n, cerr := strconv.ParseInt(sv.S, 10, 64); cerr == nil {
-						v.Items[i] = &ast.IntValue{N: n}
-					}
-				}
-			}
-		}
-		for _, item := range v.Items {
-			sub := &ast.Comparison{Field: c.Field, Op: c.Op, Value: item, Line: line, Col: col}
-			if err := checkType(f, key, sub); err != nil {
-				return err
-			}
+	}
+	for _, item := range v.Items {
+		sub := &ast.Comparison{Field: c.Field, Op: c.Op, Value: item, Line: line, Col: col}
+		if err := checkType(f, key, sub); err != nil {
+			return err
 		}
 	}
 	return nil
