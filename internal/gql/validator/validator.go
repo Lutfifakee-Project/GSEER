@@ -20,7 +20,8 @@
 // (migration 0003 defines the planneable columns — the registry is
 // derived from that schema, with dotted canonical paths and the
 // user-facing aliases), alias rewrite to canonical paths in place,
-// strict typing (an INT field rejecting a quoted value with a concrete
+// strict typing with one compat-mode coercion (a quoted integer on an
+// INT field parses in place; anything else is rejected with a concrete
 // hint), operator/field compatibility (IN_CIDR only on ip, IN lists on
 // listable fields, range ops only on ordered fields), scope/binding
 // validation for quantified blocks, the v0.0.1 feature gate (ALL →
@@ -39,6 +40,7 @@ package validator
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -107,7 +109,7 @@ var fields = map[string]*Field{
 	"asset_value":         {Canonical: "asset_value", Type: TypeString, Ops: opStrText},
 	"asset_kind":          {Canonical: "asset_kind", Type: TypeString, Ops: opEqNeqIn},
 	"domain":              {Canonical: "domain", Type: TypeString, Ops: opStrText | ast.OpSetInDomain},
-	"hostname":            {Canonical: "hostname", Aliases: []string{"host"}, Type: TypeString, Ops: opStrText | ast.OpSetInDomain},
+	"hostname":            {Canonical: "hostname", Type: TypeString, Ops: opStrText | ast.OpSetInDomain},
 	"asn":                 {Canonical: "asn", Type: TypeInt, Ops: opOrdered},
 	"asn_org":             {Canonical: "asn_org", Aliases: []string{"org"}, Type: TypeString, Ops: opStrText},
 	"geo_country":         {Canonical: "geo_country", Aliases: []string{"country"}, Type: TypeString, Ops: opEqNeqIn},
@@ -136,6 +138,11 @@ var fields = map[string]*Field{
 	"is_domain":       {Canonical: "is_domain", Type: TypeBool, Ops: opEqNeq},
 	"is_ipv6":         {Canonical: "is_ipv6", Type: TypeBool, Ops: opEqNeq},
 	"cert.is_expired": {Canonical: "cert.is_expired", Type: TypeBool, Ops: opEqNeq},
+	// Derived string field: the user alias `host` matches the hostname
+	// OR the ip column (compat engines accept both a domain name and
+	// an address in `host`); the planner lowers it to an OR over the
+	// two underlying columns - no new column.
+	"host_or_ip": {Canonical: "host_or_ip", Aliases: []string{"host"}, Type: TypeString, Ops: opStrText},
 
 	// Compatibility rewrites: the user-written name carries the
 	// direction (after -> >=, before -> <=) over the canonical time field.
@@ -405,12 +412,21 @@ func checkType(f *Field, key string, c *ast.Comparison) error {
 		}
 		switch f.Type {
 		case TypeInt:
+			// Compat layer: a quoted value that parses as an
+			// integer is coerced in place (compat engines quote
+			// every value, so port=="443" must behave like
+			// port==443).  Non-numeric quoted strings stay a
+			// strict-typing error.
+			if n, cerr := strconv.ParseInt(v.S, 10, 64); cerr == nil {
+				c.Value = &ast.IntValue{N: n}
+				return nil
+			}
 			return &Error{
 				Code: CodeType,
 				Detail: fmt.Sprintf("field %s takes an integer, got the string %s at line %d, column %d",
 					key, quoteForMsg(v.S), line, col),
-				Why:  "GQL typing is strict: the leading integer field compares against bare numbers",
-				Next: fmt.Sprintf("try: %s %s %s", key, c.Op, v.S),
+				Why:  "the quoted value is not a valid integer for this field",
+				Next: fmt.Sprintf("try: %s %s 443   (or %s %s \"80,443\" with IN)", key, c.Op, key, c.Op),
 				Line: line, Col: col,
 			}
 		case TypeTime:
@@ -448,7 +464,18 @@ func checkType(f *Field, key string, c *ast.Comparison) error {
 			}
 		}
 	case *ast.ListValue:
-		// Element typing mirrors the field type.
+		// Element typing mirrors the field type.  Quoted integers
+		// coerce in place first, so `port IN (80, "443")` works like
+		// the compat layer's single-value coercion.
+		if f.Type == TypeInt {
+			for i, item := range v.Items {
+				if sv, ok := item.(*ast.StrValue); ok {
+					if n, cerr := strconv.ParseInt(sv.S, 10, 64); cerr == nil {
+						v.Items[i] = &ast.IntValue{N: n}
+					}
+				}
+			}
+		}
 		for _, item := range v.Items {
 			sub := &ast.Comparison{Field: c.Field, Op: c.Op, Value: item, Line: line, Col: col}
 			if err := checkType(f, key, sub); err != nil {

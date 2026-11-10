@@ -55,12 +55,47 @@ func TestCompileWildcardMatchEscapesLikeMetacharacters(t *testing.T) {
 
 func TestCompileWildcardMatchIPCast(t *testing.T) {
 	p := compile(t, `ip *= "203.0.113.*"`, Options{})
-	// The ip column is inet-typed; the match must go through ::text.
-	if !strings.Contains(p.SQL, "\"ip\"::text ILIKE $1 ESCAPE '\\'") {
-		t.Errorf("missing ip::text cast, got:\n%s", p.SQL)
+	// The ip column is inet-typed; the match must go through host(inet) text.
+	if !strings.Contains(p.SQL, "host(search_index.\"ip\") ILIKE $1 ESCAPE '\\'") {
+		t.Errorf("missing host(ip) text cast, got:\n%s", p.SQL)
 	}
 	if got, ok := p.Args[0].(string); !ok || got != "203.0.113.%" {
 		t.Errorf("pattern arg = %v, want 203.0.13x.%%", p.Args[0])
+	}
+}
+
+func TestCompileHostOrIP(t *testing.T) {
+	// host="203.0.113.10" must match BOTH the hostname and the ip
+	// columns (compat engines accept a name or an address in host).
+	p := compile(t, `host == "203.0.113.10"`, Options{})
+	if !strings.Contains(p.SQL, `"hostname" = $1`) || !strings.Contains(p.SQL, `host(search_index."ip") = $2`) {
+		t.Errorf("expected (hostname = $1 OR host(ip) = $2), got:\n%s", p.SQL)
+	}
+	if !strings.Contains(p.SQL, " OR ") {
+		t.Errorf("expected an OR over hostname/ip, got:\n%s", p.SQL)
+	}
+
+	// Fuzzy host matches lower the wildcard over both columns.
+	p = compile(t, `host *= "203.0.113.*"`, Options{})
+	if !strings.Contains(p.SQL, "\"hostname\" ILIKE $1 ESCAPE '\\'") ||
+		!strings.Contains(p.SQL, "host(search_index.\"ip\") ILIKE $2 ESCAPE '\\'") {
+		t.Errorf("expected ILIKE over hostname and host(ip), got:\n%s", p.SQL)
+	}
+	if got, ok := p.Args[0].(string); !ok || got != "203.0.113.%" {
+		t.Errorf("pattern arg = %v, want 203.0.113.%%", p.Args[0])
+	}
+
+	// IN lists fan out over both columns.
+	p = compile(t, `host IN ("portal.example", "203.0.113.10")`, Options{})
+	if !strings.Contains(p.SQL, `"hostname" = ANY($1::text[])`) ||
+		!strings.Contains(p.SQL, `host(search_index."ip") = ANY($2::text[])`) {
+		t.Errorf("expected ANY(...) over hostname and host(ip), got:\n%s", p.SQL)
+	}
+
+	// The empty value keeps the hostname presence semantics.
+	p = compile(t, `host == ""`, Options{})
+	if !strings.Contains(p.SQL, `"hostname" IS NULL`) {
+		t.Errorf("expected hostname-empty semantics, got:\n%s", p.SQL)
 	}
 }
 

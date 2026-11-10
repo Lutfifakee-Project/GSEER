@@ -53,7 +53,7 @@ func validateOne(t *testing.T, q string) *ast.Comparison {
 
 func TestCompatAliasRewrites(t *testing.T) {
 	cases := []struct{ q, wantField string }{
-		{`host == "203.0.113.10"`, "hostname"},
+		{`host == "portal.example"`, "host_or_ip"}, // matches hostname OR ip in the planner
 		{`org == "ACME"`, "asn_org"},
 		{`base_protocol == "tcp"`, "transport"},
 		{`status_code == 200`, "http.status"},

@@ -54,7 +54,7 @@ free text.
 
 | Alias | Canonical field | Example |
 | --- | --- | --- |
-| `host` | `hostname` | `host*="www.example."` |
+| `host` | `hostname` **or** `ip` | `host="203.0.113.10"`, `host*="www.example."` |
 | `org` | `asn_org` | `org contains "Telecom"` |
 | `base_protocol` | `transport` | `base_protocol="udp"` |
 | `status_code` | `http.status` | `status_code=200` |
@@ -99,9 +99,11 @@ Computed predicates — no dedicated column, no extra data:
 
 ## Intentional divergences (honest differences)
 
-1. **Strict typing**: integer fields take UNQUOTED integers —
-   `port=443`, not `port="443"`. GQL's type errors come with the exact
-   rewrite (`try: http.status == 200`).
+1. **Typed, with one coercion**: integer fields take bare integers
+   (`port=443`). A QUOTED integer is coerced in place for
+   compatibility — `port="443"` and `port IN (80, "443")` behave
+   exactly like their bare forms; a quoted non-numeric value
+   (`port="https"`) stays a type error with the rewrite hint.
 2. **`=` is exact, not fuzzy**: GQL `=` and `==` are both exact
    equality. Fuzzy matching is `*=` with explicit wildcards — nothing
    matches by accident.

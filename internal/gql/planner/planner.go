@@ -710,6 +710,9 @@ func (b *builder) compileComparison(c *ast.Comparison, alias string, branch *Bra
 	if sql, ok := b.compileDerived(c, alias); ok {
 		return sql
 	}
+	if sql, ok := b.compileHostOrIp(c, alias); ok {
+		return sql
+	}
 	col := columnName(c.Field)
 	if col == "" {
 		col = c.Field
@@ -739,9 +742,12 @@ func (b *builder) compileComparison(c *ast.Comparison, alias string, branch *Bra
 	case ast.OpInDomain:
 		return b.compileInDomain(qcol, c.Value)
 	case ast.OpMatch:
-		// The ip column is inet-typed in the view; ILIKE needs text.
+		// The ip column is inet-typed in the view; ILIKE needs
+		// text, and host(inet) strips the trailing /32 (or /128)
+		// prefix that ip::text would keep — otherwise a
+		// suffix-anchored pattern like "*.10" can never match.
 		if c.Field == "ip" {
-			qcol += "::text"
+			qcol = fmt.Sprintf("host(%s)", qcol)
 		}
 		return b.compileMatch(qcol, c.Value)
 	}
@@ -784,6 +790,43 @@ func (b *builder) compileDerived(c *ast.Comparison, alias string) (string, bool)
 			return fmt.Sprintf("(%s IS NOT NULL AND %s < now())", e, e), true
 		}
 		return fmt.Sprintf("(%s IS NOT NULL AND %s >= now())", e, e), true
+	}
+	return "", false
+}
+
+// compileHostOrIp lowers the compatibility field host_or_ip (the user
+// alias `host`): a match over BOTH the hostname and the ip columns,
+// so `host="portal.example"` and `host="203.0.113.10"` both resolve.
+// The empty value keeps the hostname presence semantics (`host=""` =
+// no hostname).  The second result is false when the node is not a
+// host_or_ip comparison (the caller falls through to the normal
+// column path).
+func (b *builder) compileHostOrIp(c *ast.Comparison, alias string) (string, bool) {
+	if c.Field != "host_or_ip" {
+		return "", false
+	}
+	h := alias + `."hostname"`
+	// host(inet) renders the bare address WITHOUT the /32 (or /128)
+	// prefix netmask that ip::text keeps, so text equality against a
+	// user-written address matches.
+	i := fmt.Sprintf("host(%s.\"ip\")", alias)
+	or2 := func(a, b2 string) string { return "(" + a + " OR " + b2 + ")" }
+	switch c.Op {
+	case ast.OpEq, ast.OpNeq:
+		op := opSQL(c.Op)
+		if sv, isEmpty := c.Value.(*ast.StrValue); isEmpty && sv.S == "" {
+			if c.Op == ast.OpEq {
+				return fmt.Sprintf("(%s IS NULL OR %s = '')", h, h), true
+			}
+			return fmt.Sprintf("(%s IS NOT NULL AND %s <> '')", h, h), true
+		}
+		return or2(b.simpleCompare(h, op, c.Value), b.simpleCompare(i, op, c.Value)), true
+	case ast.OpMatch:
+		return or2(b.compileMatch(h, c.Value), b.compileMatch(i, c.Value)), true
+	case ast.OpContains:
+		return or2(b.compileContains(h, c.Value, c.Field), b.compileContains(i, c.Value, c.Field)), true
+	case ast.OpIn:
+		return or2(b.compileIn(h, c.Value), b.compileIn(i, c.Value)), true
 	}
 	return "", false
 }
