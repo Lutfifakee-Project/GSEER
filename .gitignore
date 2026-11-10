@@ -53,3 +53,10 @@ gseer.db-shm
 # The committed docker-compose.yml is the db-only template; the full
 # stack file is generated per deployment and never committed.
 /docker-compose.full.yml
+
+# Internal engineering evidence — kept on disk, NOT published
+# (untracked via `git rm --cached`; user docs and the release register
+# under docs/ stay public).
+/docs/GSEER_v0.2.0_Architecture_Specification_Revision_5.md
+/docs/GSEER_v0.2.0_CI_Windows_Integration_Report.md
+/docs/revision5/

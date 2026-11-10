@@ -50,7 +50,11 @@ installations upgrade in place.
 - **Documentation and hygiene.** Engine references outside
   `docs/SOURCES.md` are neutral (brand policy); `.gitignore` gains a
   safety net for personal-mode SQLite artifacts so a runtime database
-  can never be committed by accident.
+  can never be committed by accident.  The repository layout is also
+  tidied: release notes live in `docs/releases/`, the banner in
+  `docs/assets/`, and internal engineering evidence
+  (architecture-spec revisions, CI integration report) stays
+  local-only — the root keeps only standard Go project files.
 
 ## Compatibility changes (read before upgrading)
 

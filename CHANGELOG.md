@@ -43,6 +43,9 @@ and profile-gated.  No security boundary is weakened.
 
 - Neutral engine references outside `docs/SOURCES.md` (brand policy);
   `.gitignore` safety net for personal-mode SQLite artifacts.
+- Root layout tidied: release notes → `docs/releases/`, banner →
+  `docs/assets/`; internal evidence docs (architecture-spec revisions,
+  CI integration report) are local-only and no longer published.
 
 ## [v0.2.0] — Hardened Self-Hosted Readiness
 

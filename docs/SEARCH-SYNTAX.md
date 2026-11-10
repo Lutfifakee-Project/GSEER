@@ -124,6 +124,5 @@ Computed predicates — no dedicated column, no extra data:
    quantifier. The two never collide (one is an operator position, the
    other a scope position).
 
-See `gseer search --help` for the live field registry, and
-`docs/GSEER_v0.2.0_Architecture_Specification_Revision_5.md` (SPEC-04)
-for the normative grammar.
+See `gseer search --help` for the live field registry and the normative
+grammar (SPEC-04).

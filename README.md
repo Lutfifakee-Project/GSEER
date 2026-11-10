@@ -1,6 +1,6 @@
 # GSEER
 
-![GSEER banner](banner.png)
+![GSEER banner](docs/assets/banner.png)
 
 > Internet Asset Intelligence & Search Engine.
 > **Discover. Identify. Search.**
@@ -64,7 +64,7 @@ Everything runs on your machine: your database, your data, your rules.
 > (`*=`, free text, field aliases), **personal mode on SQLite** — a
 > single-file database with no PostgreSQL dependency — and release
 > engineering (validated release config, `go install` support,
-> draft-gated releases).  See `RELEASE_NOTES_v0.2.1.md`.  PostgreSQL
+> draft-gated releases).  See `docs/releases/RELEASE_NOTES_v0.2.1.md`.  PostgreSQL
 > remains the primary engine for the self-hosted server profile.
 
 ## Quick Start
@@ -388,3 +388,4 @@ enforces it.
 - [`docs/RULES.md`](docs/RULES.md) — fingerprint rule format, confidence tiers, contributions
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — release register (what is live per release)
 - [`CHANGELOG.md`](CHANGELOG.md) — per-release changes
+- [`docs/releases/`](docs/releases/) — per-release release notes (v0.1.0, v0.2.0, v0.2.1)
