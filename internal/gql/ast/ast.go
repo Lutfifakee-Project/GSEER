@@ -70,12 +70,13 @@ const (
 	OpInCidr   // IN_CIDR
 	OpInDomain // IN_DOMAIN
 	OpIn       // IN (list membership)
+	OpMatch    // *= (wildcard fuzzy match: * = any run, ? = one char)
 )
 
 var opNames = map[Op]string{
 	OpEq: "==", OpNeq: "!=", OpLt: "<", OpLe: "<=", OpGt: ">", OpGe: ">=",
 	OpContains: "CONTAINS", OpInCidr: "IN_CIDR", OpInDomain: "IN_DOMAIN",
-	OpIn: "IN",
+	OpIn: "IN", OpMatch: "*=",
 }
 
 // String renders the canonical operator spelling.
@@ -102,6 +103,7 @@ const (
 	OpSetInCidr   OpSet = 1 << OpInCidr
 	OpSetInDomain OpSet = 1 << OpInDomain
 	OpSetIn       OpSet = 1 << OpIn
+	OpSetMatch    OpSet = 1 << OpMatch
 )
 
 // Has reports whether the set contains op.
@@ -111,7 +113,7 @@ func (s OpSet) Has(op Op) bool { return s&(1<<op) != 0 }
 // separated — used in "field accepts: …" error messages.
 func (s OpSet) String() string {
 	var parts []string
-	for op := OpEq; op <= OpIn; op++ {
+	for op := OpEq; op <= OpMatch; op++ {
 		if s.Has(op) {
 			parts = append(parts, op.String())
 		}
@@ -277,6 +279,31 @@ type Exists struct {
 	Col   int
 }
 
+// FreeText is the bare-keyword search form: one or more quoted string
+// literals with no field path (`"wordpress"`, `"apache" "login"`).
+// The parser accepts it anywhere a comparison is legal; the validator
+// expands it into CONTAINS comparisons over the fixed free-text field
+// list (validator.FreeTextFields) — one OR-chain per term, AND across
+// terms.  It is a leaf: it holds no child node.
+type FreeText struct {
+	Terms []string
+	Line  int
+	Col   int
+}
+
+// Pos returns the node's first token position.
+func (n *FreeText) Pos() (int, int) { return n.Line, n.Col }
+
+// String renders the canonical multi-literal form (each term re-quoted
+// and space-separated, which re-parses to the same node).
+func (n *FreeText) String() string {
+	parts := make([]string, 0, len(n.Terms))
+	for _, t := range n.Terms {
+		parts = append(parts, (&StrValue{S: t}).String())
+	}
+	return strings.Join(parts, " ")
+}
+
 // Quantified is a quantified block: EVERY/ANY over the Body for the
 // scope Field names.  QuantAll parses (M6) but is validator-rejected in
 // v0.0.1.
@@ -342,6 +369,8 @@ func Walk(v Visitor, n Node) {
 		v.Visit(n)
 	case *Exists:
 		v.Visit(n)
+	case *FreeText:
+		v.Visit(n)
 	case *Quantified:
 		if w := v.Visit(n); w != nil {
 			Walk(w, t.Body)
@@ -375,6 +404,8 @@ func Count(n Node) int {
 	case *Comparison:
 		return 1
 	case *Exists:
+		return 1
+	case *FreeText:
 		return 1
 	case *Quantified:
 		return 1 + Count(t.Body)

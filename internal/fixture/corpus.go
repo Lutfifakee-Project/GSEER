@@ -285,7 +285,15 @@ type LoadStats struct {
 // upsert, and IngestFacts dedupes observations on the L1 delivery
 // identity (source_id, source_cursor) — a second run reports the same
 // rows as updated/deduped instead of duplicating anything.
-func Load(ctx context.Context, store *postgres.Store) (LoadStats, error) {
+// StoreBackend is the fixture loader's storage contract — both engine
+// stores (postgres.Store, sqlite.Store) satisfy it, so the SAME labeled
+// corpus loads identically on either engine.
+type StoreBackend interface {
+	EnsureFixtureSource(ctx context.Context) (int64, error)
+	IngestFacts(ctx context.Context, facts []storage.Fact) (storage.IngestStats, error)
+}
+
+func Load(ctx context.Context, store StoreBackend) (LoadStats, error) {
 	sourceID, err := store.EnsureFixtureSource(ctx)
 	if err != nil {
 		return LoadStats{}, fmt.Errorf("fixture: ensure fixture data source row: %w", err)

@@ -35,9 +35,11 @@ func ValidateProfile(c *Config) *Error {
 		return validateClient(c)
 	case ProfileSelfHosted:
 		return validateSelfHosted(c)
+	case ProfilePersonal:
+		return validatePersonal(c)
 	default:
 		return errInvalidValue("profile", string(c.Profile),
-			"profile must be 'client' or 'self-hosted'").
+			"profile must be 'client', 'self-hosted' or 'personal'").
 			withNext("run: gseer setup  (to choose a profile)")
 	}
 }
@@ -105,4 +107,34 @@ func isLoopback(listen string) bool {
 		return true
 	}
 	return strings.HasPrefix(host, "127.")
+}
+
+// validatePersonal enforces the personal-profile schema:
+//   - database.dsn is REQUIRED and must be the database FILE path
+//     (postgres:// URLs are rejected — wrong engine, wrong profile);
+//   - client.endpoint is rejected (no remote endpoint in personal mode);
+//   - server.* is allowed (a personal server can serve the local API);
+//   - sources may be present (config-only; the collect runner gates on
+//     enabled=false by default).
+func validatePersonal(c *Config) *Error {
+	if c.Database.DSN == "" {
+		return errRequired("database.dsn", string(ProfilePersonal)).
+			withNext("run: gseer setup --personal  (provisions the database file and writes the config)")
+	}
+	if strings.HasPrefix(strings.TrimSpace(c.Database.DSN), "postgres://") {
+		return errInvalidValue("database.dsn", "[redacted]",
+			"the personal profile stores the SQLite database FILE path in database.dsn, not a postgres:// URL").
+			withNext("run: gseer setup --personal  (writes the correct config), or switch: gseer setup --self-hosted")
+	}
+	if c.Client.Endpoint != "" {
+		return errProfileConflict("client.endpoint", string(ProfilePersonal)).
+			withWhy("the personal profile runs the engine locally; there is no remote endpoint.").
+			withNext("remove client.* keys, or switch profile: gseer setup --server <url> --profile client")
+	}
+	if c.Database.RuntimeDSN != "" {
+		return errProfileConflict("database.runtime_dsn", string(ProfilePersonal)).
+			withWhy("personal mode uses ONE local credential — the database file's filesystem permissions (0600).").
+			withNext("remove database.runtime_dsn")
+	}
+	return nil
 }

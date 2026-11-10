@@ -114,6 +114,7 @@ func registerDBCmd(root *cobra.Command) {
 		newDBMigrateForceCmd(),
 	)
 	db.AddCommand(migrate)
+	db.AddCommand(newDBBackupCmd(), newDBRestoreCmd())
 	root.AddCommand(db)
 }
 
@@ -354,5 +355,54 @@ gseer command.`,
 	cmd.Flags().IntVar(&version, "version", -1, "the migration version to force to (0..head)")
 	cmd.Flags().BoolVar(&yes, "yes", false, "skip the interactive confirmation (scripted use; the banner still prints)")
 	_ = cmd.MarkFlagRequired("version")
+	return cmd
+}
+
+// newDBBackupCmd attaches `gseer db backup` — the personal-mode online
+// backup (SQLite VACUUM INTO; one consistent snapshot).  The self-hosted
+// profile backs up with PostgreSQL tooling (pg_dump) and is refused here
+// honestly rather than half-supported.
+func newDBBackupCmd() *cobra.Command {
+	var outPath string
+	cmd := &cobra.Command{
+		Use:   "backup --out <file>",
+		Short: "Backup the personal database (consistent online snapshot)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadEngineConfig()
+			if err != nil {
+				return err
+			}
+			if cfg.Profile != config.ProfilePersonal {
+				return fmt.Errorf("E_DB_BACKUP: gseer db backup currently supports the personal profile; self-hosted PostgreSQL backups use pg_dump (docs/DEPLOYMENT.md)")
+			}
+			return runPersonalDBBackup(cmd, outPath)
+		},
+	}
+	cmd.Flags().StringVar(&outPath, "out", "", "backup file path (default: <database>.backup-<UTC timestamp>)")
+	return cmd
+}
+
+// newDBRestoreCmd attaches `gseer db restore <backup>` — replaces the
+// personal database file with the backup (confirmation-gated; the old
+// file is kept aside).
+func newDBRestoreCmd() *cobra.Command {
+	var yes bool
+	cmd := &cobra.Command{
+		Use:   "restore <backup-file>",
+		Short: "Restore the personal database from a backup snapshot",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := loadEngineConfig()
+			if err != nil {
+				return err
+			}
+			if cfg.Profile != config.ProfilePersonal {
+				return fmt.Errorf("E_DB_RESTORE: gseer db restore currently supports the personal profile")
+			}
+			return runPersonalDBRestore(cmd, args[0], yes)
+		},
+	}
+	cmd.Flags().BoolVar(&yes, "yes", false, "skip the confirmation prompt")
 	return cmd
 }

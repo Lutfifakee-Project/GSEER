@@ -148,7 +148,19 @@ gseer search 'stale == "false"' --facets --facet port,protocol,country --max-val
 gseer search 'port==443' --mode asset              # one row per asset
 gseer search 'port==443' --explain                 # print the compiled query plan
 gseer search 'port==443' --validate                # validate only, no DB contact
+gseer search '"wordpress"'                         # bare-keyword free text (stored text surfaces)
+gseer search 'ip*="203.0.113.*"'                   # wildcard fuzzy match (* = any run, ? = one)
+gseer search 'after="2026-01-01" && status_code=200'  # compat aliases: time filter + status
 ```
+
+The compatibility layer adds C-style operators (`&&`, `||`, `!`),
+wildcard fuzzy matching (`*=`), common field aliases (`host`, `org`,
+`base_protocol`, `status_code`, `cert.subject.cn`, `cert.issuer.cn`),
+directional time filters (`after`/`before`), derived booleans
+(`is_domain`, `is_ipv6`, `cert.is_expired`), and empty-value semantics
+(`field=""` = missing-or-empty). The full mapping — including what is
+deliberately NOT supported and why (Search ≠ Scan) — is in
+`docs/SEARCH-SYNTAX.md`.
 
 The full field registry (every field and its operators) is in
 `gseer search --help`. Export the results:
@@ -333,7 +345,8 @@ random database password — never commit a real `.env`.
 
 - **Self-hosted index only.** A fresh install has an empty database;
   you search exactly what your sources collected. There is **no**
-  global, FOFA-scale index — GSEER is the engine, not a hosted service.
+  global, hosted-engine-scale index — GSEER is the engine, not a
+  hosted service.
 - **Passive facts are asset-level.** A DNS answer or a certificate-log
   entry proves an identifier was published; it never invents a port, a
   banner, or an HTTP title. Service-level rows appear only from

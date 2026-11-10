@@ -30,6 +30,28 @@ import (
 // compatibility, scope validation, the ALL gate, unknown fields with
 // did-you-mean, and canonical-path rewriting visible in String().
 
+// comparisonsByField collects every *ast.Comparison for the given field
+// name (post-rewrite canonical path) via ast.Walk.
+func comparisonsByField(n ast.Node, field string) []*ast.Comparison {
+	var found []*ast.Comparison
+	v := &collector{field: field, out: &found}
+	ast.Walk(v, n)
+	return found
+}
+
+type collector struct {
+	field string
+	out   *[]*ast.Comparison
+}
+
+func (c *collector) Visit(n ast.Node) ast.Visitor {
+	if cmp, ok := n.(*ast.Comparison); ok && cmp.Field == c.field {
+		*c.out = append(*c.out, cmp)
+		return nil
+	}
+	return c
+}
+
 // validate parses and validates, returning the rewritten tree or the
 // *Error.
 func validate(t *testing.T, src string) (ast.Node, *Error) {
@@ -135,17 +157,50 @@ func TestValidateUnknownField(t *testing.T) {
 	}
 }
 
-// TestValidateStrictTyping — port=="443" is GQL_E_TYPE with the
-// unquoted rewrite; a string field rejects a bare integer.
+// TestValidateStrictTyping — quoted integers coerce on INT fields
+// (compat layer: port=="443" validates as 443), non-numeric quoted
+// strings stay GQL_E_TYPE; a string field rejects a bare integer.
 func TestValidateStrictTyping(t *testing.T) {
+	// Compat coercion: a quoted integer on an INT field parses in place.
 	n, _ := parser.Parse(`port == "443"`)
 	_, err := Validate(n)
+	if err != nil {
+		t.Fatalf("quoted integer must coerce, got %v", err)
+	}
+	cmps := comparisonsByField(n, "port")
+	if len(cmps) != 1 {
+		t.Fatalf("got %d port comparisons, want 1", len(cmps))
+	}
+	iv, ok := cmps[0].Value.(*ast.IntValue)
+	if !ok || iv.N != 443 {
+		t.Fatalf("coerced value = %#v, want IntValue(443)", cmps[0].Value)
+	}
+
+	// IN lists coerce their quoted-integer elements too.
+	n, _ = parser.Parse(`port IN (80, "443")`)
+	if _, err = Validate(n); err != nil {
+		t.Fatalf("IN list coercion failed: %v", err)
+	}
+	cmps = comparisonsByField(n, "port")
+	if len(cmps) != 1 {
+		t.Fatalf("got %d port comparisons, want 1", len(cmps))
+	}
+	lv, ok := cmps[0].Value.(*ast.ListValue)
+	if !ok || len(lv.Items) != 2 {
+		t.Fatalf("list = %#v, want 2 coerced items", cmps[0].Value)
+	}
+	for i, item := range lv.Items {
+		if _, ok := item.(*ast.IntValue); !ok {
+			t.Errorf("item[%d] = %#v, want coerced IntValue", i, item)
+		}
+	}
+
+	// Non-numeric quoted strings on an INT field stay strict.
+	n, _ = parser.Parse(`port == "https"`)
+	_, err = Validate(n)
 	var ve *Error
 	if !errors.As(err, &ve) || ve.Code != CodeType {
-		t.Fatalf("want GQL_E_TYPE, got %v", err)
-	}
-	if !strings.Contains(ve.Next, "port == 443") {
-		t.Errorf("hint = %q, want the unquoted rewrite", ve.Next)
+		t.Fatalf("want GQL_E_TYPE for non-numeric quoted value, got %v", err)
 	}
 
 	n, _ = parser.Parse(`country == 840`)
@@ -157,8 +212,9 @@ func TestValidateStrictTyping(t *testing.T) {
 		t.Errorf("hint = %q, want the quoted rewrite", ve.Next)
 	}
 
-	// IN lists type-check their elements.
-	n, _ = parser.Parse(`port IN (80, "443")`)
+	// Quoted integers inside IN lists still type-check the whole list:
+	// a non-numeric item is an error even next to a valid one.
+	n, _ = parser.Parse(`port IN (80, "abc")`)
 	_, err = Validate(n)
 	if !errors.As(err, &ve) || ve.Code != CodeType {
 		t.Fatalf("want GQL_E_TYPE inside IN list, got %v", err)

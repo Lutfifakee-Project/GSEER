@@ -697,12 +697,22 @@ func (b *builder) compileNode(n ast.Node, alias string, branch *Branch) string {
 		return fmt.Sprintf("%s.\"%s\" IS NOT NULL", alias, col)
 	case *ast.Quantified:
 		return b.compileQuantified(t, alias, branch)
+	case *ast.FreeText:
+		return b.compileFreeText(t, alias)
 	}
 	return "TRUE"
 }
 
 // compileComparison lowers one field/op/value triple.
 func (b *builder) compileComparison(c *ast.Comparison, alias string, branch *Branch) string {
+	// Derived compatibility fields have no search_index column; the
+	// planner lowers them to predicates over the underlying columns.
+	if sql, ok := b.compileDerived(c, alias); ok {
+		return sql
+	}
+	if sql, ok := b.compileHostOrIp(c, alias); ok {
+		return sql
+	}
 	col := columnName(c.Field)
 	if col == "" {
 		col = c.Field
@@ -713,6 +723,15 @@ func (b *builder) compileComparison(c *ast.Comparison, alias string, branch *Bra
 	switch c.Op {
 	case ast.OpEq, ast.OpNeq, ast.OpLt, ast.OpLe, ast.OpGt, ast.OpGe:
 		op := opSQL(c.Op)
+		// Compatibility empty-value semantics: `field=""` matches rows
+		// where the field is missing OR empty; `field!=""` matches rows
+		// where the field is present AND non-empty.
+		if sv, isEmpty := c.Value.(*ast.StrValue); isEmpty && sv.S == "" {
+			if c.Op == ast.OpEq {
+				return fmt.Sprintf("(%s IS NULL OR %s = '')", qcol, qcol)
+			}
+			return fmt.Sprintf("(%s IS NOT NULL AND %s <> '')", qcol, qcol)
+		}
 		return b.simpleCompare(qcol, op, c.Value)
 	case ast.OpIn:
 		return b.compileIn(qcol, c.Value)
@@ -722,8 +741,193 @@ func (b *builder) compileComparison(c *ast.Comparison, alias string, branch *Bra
 		return b.compileInCidr(qcol, c.Value)
 	case ast.OpInDomain:
 		return b.compileInDomain(qcol, c.Value)
+	case ast.OpMatch:
+		// The ip column is inet-typed in the view; ILIKE needs
+		// text, and host(inet) strips the trailing /32 (or /128)
+		// prefix that ip::text would keep — otherwise a
+		// suffix-anchored pattern like "*.10" can never match.
+		if c.Field == "ip" {
+			qcol = fmt.Sprintf("host(%s)", qcol)
+		}
+		return b.compileMatch(qcol, c.Value)
 	}
 	return "TRUE"
+}
+
+// compileDerived lowers the compatibility boolean fields (is_domain,
+// is_ipv6, cert.is_expired) to predicates over the underlying
+// search_index columns.  The second result is false when the node is
+// not a derived-field comparison (the caller falls through to the
+// normal column path).
+func (b *builder) compileDerived(c *ast.Comparison, alias string) (string, bool) {
+	want, ok := boolValue(c.Value)
+	if !ok {
+		return "", false // validator rejects non-bool for TypeBool fields
+	}
+	colOf := func(field string) string {
+		name := columnName(field)
+		if name == "" {
+			name = field
+		}
+		return alias + ".\"" + name + "\""
+	}
+	switch c.Field {
+	case "is_domain":
+		d := colOf("domain")
+		if want {
+			return fmt.Sprintf("(%s IS NOT NULL AND %s <> '')", d, d), true
+		}
+		return fmt.Sprintf("(%s IS NULL OR %s = '')", d, d), true
+	case "is_ipv6":
+		ip := colOf("ip") + "::text" // the ip column is inet-typed
+		if want {
+			return fmt.Sprintf("(%s IS NOT NULL AND position(':' in %s) > 0)", ip, ip), true
+		}
+		return fmt.Sprintf("(%s IS NOT NULL AND position(':' in %s) = 0)", ip, ip), true
+	case "cert.is_expired":
+		e := colOf("tls.cert_expiry")
+		if want {
+			return fmt.Sprintf("(%s IS NOT NULL AND %s < now())", e, e), true
+		}
+		return fmt.Sprintf("(%s IS NOT NULL AND %s >= now())", e, e), true
+	}
+	return "", false
+}
+
+// compileHostOrIp lowers the compatibility field host_or_ip (the user
+// alias `host`): a match over BOTH the hostname and the ip columns,
+// so `host="portal.example"` and `host="203.0.113.10"` both resolve.
+// The empty value keeps the hostname presence semantics (`host=""` =
+// no hostname).  The second result is false when the node is not a
+// host_or_ip comparison (the caller falls through to the normal
+// column path).
+func (b *builder) compileHostOrIp(c *ast.Comparison, alias string) (string, bool) {
+	if c.Field != "host_or_ip" {
+		return "", false
+	}
+	h := alias + `."hostname"`
+	// host(inet) renders the bare address WITHOUT the /32 (or /128)
+	// prefix netmask that ip::text keeps, so text equality against a
+	// user-written address matches.
+	i := fmt.Sprintf("host(%s.\"ip\")", alias)
+	or2 := func(a, b2 string) string { return "(" + a + " OR " + b2 + ")" }
+	switch c.Op {
+	case ast.OpEq, ast.OpNeq:
+		op := opSQL(c.Op)
+		if sv, isEmpty := c.Value.(*ast.StrValue); isEmpty && sv.S == "" {
+			if c.Op == ast.OpEq {
+				return fmt.Sprintf("(%s IS NULL OR %s = '')", h, h), true
+			}
+			return fmt.Sprintf("(%s IS NOT NULL AND %s <> '')", h, h), true
+		}
+		return or2(b.simpleCompare(h, op, c.Value), b.simpleCompare(i, op, c.Value)), true
+	case ast.OpMatch:
+		return or2(b.compileMatch(h, c.Value), b.compileMatch(i, c.Value)), true
+	case ast.OpContains:
+		return or2(b.compileContains(h, c.Value, c.Field), b.compileContains(i, c.Value, c.Field)), true
+	case ast.OpIn:
+		return or2(b.compileIn(h, c.Value), b.compileIn(i, c.Value)), true
+	}
+	return "", false
+}
+
+// boolValue extracts a validated boolean literal ("true"/"false").
+func boolValue(v ast.Value) (bool, bool) {
+	sv, ok := v.(*ast.StrValue)
+	if !ok {
+		return false, false
+	}
+	switch sv.S {
+	case "true":
+		return true, true
+	case "false":
+		return false, true
+	}
+	return false, false
+}
+
+// compileMatch lowers `field *= "pattern"` to a case-insensitive
+// wildcard ILIKE: `*` matches any run of characters, `?` matches
+// exactly one; every other rune — including the SQL LIKE
+// metacharacters %, _ and the escape character — is matched
+// literally.
+func (b *builder) compileMatch(qcol string, v ast.Value) string {
+	sv, ok := v.(*ast.StrValue)
+	if !ok {
+		return "FALSE"
+	}
+	idx := b.placeholder(matchPattern(sv.S))
+	return fmt.Sprintf("%s ILIKE $%d ESCAPE '\\'", qcol, idx)
+}
+
+// matchPattern translates a user wildcard pattern into a SQL LIKE
+// pattern with backslash-escaped literals.
+func matchPattern(s string) string {
+	var out strings.Builder
+	for _, r := range s {
+		switch r {
+		case '\\':
+			out.WriteString(`\\`)
+		case '%':
+			out.WriteString("\\%")
+		case '_':
+			out.WriteString("\\_")
+		case '*':
+			out.WriteRune('%')
+		case '?':
+			out.WriteRune('_')
+		default:
+			out.WriteRune(r)
+		}
+	}
+	return out.String()
+}
+
+// compileFreeText defensively lowers the free-text node (the
+// validator normally expands it into comparisons before planning;
+// the planner stays self-contained when invoked without the
+// validator).  Semantics match the validator expansion: OR across
+// the free-text columns per term, AND across terms.
+func (b *builder) compileFreeText(ft *ast.FreeText, alias string) string {
+	var out string
+	for i, term := range ft.Terms {
+		var termSQL string
+		for j, field := range freeTextFieldPaths {
+			name := columnName(field)
+			if name == "" {
+				name = field
+			}
+			qcol := alias + ".\"" + name + "\""
+			frag := b.compileContains(qcol, &ast.StrValue{S: term}, field)
+			if j == 0 {
+				termSQL = frag
+			} else {
+				termSQL = "(" + termSQL + " OR " + frag + ")"
+			}
+		}
+		if i == 0 {
+			out = termSQL
+		} else {
+			out = "(" + out + " AND " + termSQL + ")"
+		}
+	}
+	return out
+}
+
+// freeTextFieldPaths mirrors validator.FreeTextFields (the planner
+// must not import the validator; TestFreeTextFieldListsMatch pins
+// the two lists together).
+var freeTextFieldPaths = []string{
+	"asset_value",
+	"hostname",
+	"domain",
+	"http.title",
+	"http.server",
+	"product",
+	"name",
+	"asn_org",
+	"tls.cert_subject_cn",
+	"tls.cert_issuer_cn",
 }
 
 // opSQL maps an ast.Op to its SQL comparator spelling.

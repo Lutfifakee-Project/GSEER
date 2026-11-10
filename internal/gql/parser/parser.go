@@ -322,6 +322,14 @@ func (p *parser) parsePrimary() (ast.Node, error) {
 	case lexer.KwAny, lexer.KwAll:
 		return p.parseQuantified()
 
+	case lexer.STRING:
+		// Free-text form: one or more quoted literals with no field
+		// path — the bare-keyword search (`"wordpress"`, `"apache"
+		// "login"`).  The validator expands the node over the free-text
+		// field list.  A leading INT stays an error: a number without a
+		// field has no honest target (port=443 is the field form).
+		return p.parseFreeText()
+
 	case lexer.IDENT:
 		// `exists(field)` — the functional presence test (the canonical
 		// rendering of ast.Exists).  Case-insensitive like every keyword;
@@ -334,6 +342,28 @@ func (p *parser) parsePrimary() (ast.Node, error) {
 	default:
 		return nil, p.unexpected(tok, "a field path, \"(\", \"!\", or a quantifier (ANY/ALL)")
 	}
+}
+
+// parseFreeText parses the free-text form: one or more consecutive
+// string literals (already dispatched by parsePrimary).  Consecutive
+// literals are an implicit AND across terms ("apache" "login" = both
+// must match somewhere); the validator does the expansion.
+func (p *parser) parseFreeText() (ast.Node, error) {
+	first := p.advance() // the leading STRING, guaranteed by dispatch
+	terms := []string{first.Value}
+	for p.peek().Kind == lexer.STRING {
+		terms = append(terms, p.advance().Value)
+	}
+	for _, term := range terms {
+		if term == "" {
+			return nil, p.errorf(first,
+				"empty free-text term at line %d, column %d",
+				"a free-text search needs a non-empty keyword",
+				"try: \"nginx\"  or  port == 443")
+		}
+	}
+	n := &ast.FreeText{Terms: terms, Line: first.Line, Col: first.Col}
+	return p.checked(n, first)
 }
 
 // parseQuantified parses `ANY(field){ body }` (ALL parses too; the M7
@@ -432,6 +462,9 @@ func (p *parser) parseFieldTail() (ast.Node, error) {
 	case lexer.KwInDomain:
 		p.advance()
 		return p.comparison(field, ast.OpInDomain)
+	case lexer.MATCH:
+		p.advance()
+		return p.comparison(field, ast.OpMatch)
 	case lexer.KwIn:
 		p.advance()
 		return p.inList(field)

@@ -1,0 +1,133 @@
+# GSEER — Internet Asset Intelligence & Search Engine.
+# Copyright (C) 2026  The GSEER Authors
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU Affero General Public License as published
+# by the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU Affero General Public License for more details.
+#
+# You should have received a copy of the GNU Affero General Public License
+# along with this program.  If not, see <https://www.gnu.org/licenses/>.
+
+# GoReleaser v2 configuration for GSEER (EU-3: prebuilt binaries).
+#
+# REL-02 remediation notes:
+#   - This file is valid YAML.  Comments use `#` only — the previous
+#     draft used `//` line comments, which are NOT YAML and made the
+#     file unparseable by GoReleaser and by any YAML validator.
+#   - Validated with `goreleaser check` from GoReleaser v2.20.0 (the
+#     pinned version in .github/workflows/release.yml); a full
+#     `goreleaser build --snapshot --clean` of every configured
+#     os/arch pair is part of the local verification battery, and CI
+#     runs the same validator on every push so an invalid config can
+#     never merge again.
+#   - builds.main is ./cmd/gseer — the canonical entry point.  The
+#     module-root main package exists only so the short-form
+#     `go install ...@latest` resolves; it is a pure delegate to the
+#     same cli.Execute call and is covered by the root main_test.go
+#     equivalence tests (REL-01).
+#
+# Reproducibility (REL-03 companion): mod_timestamp pins the module
+# fetch timestamp, -trimpath and -buildvcs=false remove local-path and
+# VCS noise from the build ID, and version metadata is injected via
+# ldflags so `gseer version` reports the tag, full commit, and build
+# date of the release binary — never an unsubstantiated value.
+version: 2
+
+project_name: gseer
+
+# Fail the release instead of silently building from a dirty or shallow
+# source tree: checksums and version metadata must describe exactly one
+# commit.
+git:
+  prerelease_suffix: "-"
+
+before:
+  hooks:
+    # go mod verify asserts the module graph matches go.sum before any
+    # release artifact is produced.
+    - go mod verify
+
+builds:
+  - id: gseer
+    main: ./cmd/gseer
+    binary: gseer
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    flags:
+      - -trimpath
+      - -buildvcs=false
+    ldflags:
+      - -s -w
+        -X github.com/Lutfifakee-Project/GSEER/internal/version.Version={{ .Version }}
+        -X github.com/Lutfifakee-Project/GSEER/internal/version.Commit={{ .FullCommit }}
+        -X github.com/Lutfifakee-Project/GSEER/internal/version.BuiltAt={{ .Date }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: gseer
+    # Final artifact names: gseer_<version>_<os>_<arch>[.<fmt>]
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      # License and docs travel with every archive; nothing else —
+      # keep the artifact surface minimal and auditable.
+      - LICENSE*
+      - README*
+      - CHANGELOG*
+
+checksum:
+  # SHA-256, artifact-per-artifact — the same algorithm `gseer doctor`
+  # prints for the running binary (SPEC-03: checksums, not signatures).
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ .Tag }}-snapshot"
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - Merge pull request
+      - Merge branch
+
+release:
+  # DRAFT releases: nothing is published automatically.  A maintainer
+  # must review the draft and press publish — the technical release
+  # pipeline never bypasses the human release gate (SPEC-03 §4; rule 8:
+  # no release without owner approval).
+  draft: true
+  prerelease: auto
+  mode: append
+  header: |
+    ## GSEER {{ .Tag }}
+
+    **Discover. Identify. Search.**
+
+    Self-hosted internet-asset search. Verify the archive against
+    `checksums.txt` (SHA-256) before running anything, and check
+    `gseer doctor` after installing — it prints the running binary's
+    SHA-256 so you can compare it with this release's checksums.

@@ -10,8 +10,9 @@ and you search everything it has indexed with a simple query language
 
 Everything runs on your machine: your database, your data, your rules.
 
-GSEER is **not** a FOFA clone and makes no claim of global internet
-coverage. It is a self-hosted search engine over data *you* collect.
+GSEER is **not** a clone of any hosted internet-search engine and makes
+no claim of global internet coverage. It is a self-hosted search engine
+over data *you* collect.
 
 **License:** GNU Affero General Public License v3.0 (AGPL-3.0) — see
 `LICENSE`.
@@ -184,7 +185,8 @@ manifest (key ceremony and recovery: `docs/UPDATE.md` §3–§4).
 
 ## What is not in v0.1.0
 
-- Global internet index or hosted search service (no FOFA-scale coverage).
+- Global internet index or hosted search service (no hosted-engine-scale
+  coverage).
 - Active scanning / service observation (`gseer scan`, `gseer asset` —
   planned for a later phase; both exit 64 in v0.1.0).
 - Prebuilt binaries for Linux, macOS, or Windows.
