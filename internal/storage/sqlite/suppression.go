@@ -57,10 +57,6 @@ import (
 // RetractLimit bounds one retraction run (same value as the PG store).
 const RetractLimit = 100_000
 
-// suppress.Rule mirrors the shared matcher types — the suppress package
-// is backend-agnostic and reused as-is.
-type suppressRule = suppress.Rule
-
 // LoadSuppressions reads every rule row (enabled, disabled and expired
 // — the Matcher applies the filters so a rule flip is visible in one
 // place).
@@ -75,7 +71,7 @@ FROM suppressions ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: cannot load suppressions: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var rules []suppress.Rule
 	for rows.Next() {
 		var (
@@ -141,8 +137,8 @@ func (s *Store) AddSuppression(ctx context.Context, in SuppressInput) (suppress.
 			expires = FormatTS(*in.ExpiresAt)
 		}
 		_, ierr := tx.ExecContext(ctx, `INSERT INTO suppressions
-			(kind, value, reason, created_by, created_at, expires_at, enabled)
-			VALUES (?, ?, ?, ?, ?, ?, 1)`,
+                        (kind, value, reason, created_by, created_at, expires_at, enabled)
+                        VALUES (?, ?, ?, ?, ?, ?, 1)`,
 			string(in.Kind), value, in.Reason, in.CreatedBy, FormatTS(time.Now().UTC()), expires)
 		if ierr != nil {
 			return ierr
@@ -388,8 +384,8 @@ func (s *Store) retractSuppressedCore(ctx context.Context, tx Querier, rule supp
 	for _, id := range ids {
 		var svcN, obsN int
 		if err := tx.QueryRowContext(ctx, `SELECT
-			(SELECT count(*) FROM services WHERE asset_id = ?),
-			(SELECT count(*) FROM observations WHERE asset_id = ?)`, id, id).Scan(&svcN, &obsN); err != nil {
+                        (SELECT count(*) FROM services WHERE asset_id = ?),
+                        (SELECT count(*) FROM observations WHERE asset_id = ?)`, id, id).Scan(&svcN, &obsN); err != nil {
 			return stats, err
 		}
 		stats.ServicesRemoved += svcN
@@ -448,7 +444,7 @@ func retractCandidates(ctx context.Context, q Querier, kind suppress.Kind, canon
 				allVals  []string
 				allSrc   []string
 			)
-			defer rows.Close()
+			defer func() { _ = rows.Close() }()
 			for rows.Next() {
 				var id int64
 				var k, v, ip, src string
@@ -470,11 +466,11 @@ func retractCandidates(ctx context.Context, q Querier, kind suppress.Kind, canon
 		}
 	case suppress.KindDomain:
 		rows, err = q.QueryContext(ctx, `SELECT id, kind, value, domain, sources FROM assets
-			WHERE (kind = 'domain' AND domain = ?) OR (kind = 'hostname' AND hostname = ?)`, canonical, canonical)
+                        WHERE (kind = 'domain' AND domain = ?) OR (kind = 'hostname' AND hostname = ?)`, canonical, canonical)
 	case suppress.KindDomainSuffix:
 		rows, err = q.QueryContext(ctx, `SELECT id, kind, value, domain, sources FROM assets
-			WHERE (kind = 'domain' AND domain IS NOT NULL AND (domain = ? OR substr(domain, -(length(?) + 1)) = '.' || ?))
-			   OR (kind = 'hostname' AND hostname IS NOT NULL AND (hostname = ? OR substr(hostname, -(length(?) + 1)) = '.' || ?))`,
+                        WHERE (kind = 'domain' AND domain IS NOT NULL AND (domain = ? OR substr(domain, -(length(?) + 1)) = '.' || ?))
+                           OR (kind = 'hostname' AND hostname IS NOT NULL AND (hostname = ? OR substr(hostname, -(length(?) + 1)) = '.' || ?))`,
 			canonical, canonical, canonical, canonical, canonical, canonical)
 	default:
 		return nil, nil, nil, nil, fmt.Errorf("E_DB_USAGE: unsupported retraction kind %q", kind)
@@ -482,7 +478,7 @@ func retractCandidates(ctx context.Context, q Querier, kind suppress.Kind, canon
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		var id int64
 		var k, v, ident, src string
@@ -495,7 +491,7 @@ func retractCandidates(ctx context.Context, q Querier, kind suppress.Kind, canon
 		sourcesRaw = append(sourcesRaw, src)
 	}
 	err = rows.Err()
-	return
+	return ids, kinds, values, sourcesRaw, err
 }
 
 // retractBySource implements the source-exclusion retraction (the same
@@ -542,6 +538,9 @@ VALUES (?, 'retract-source', ?, ?)`, rule.ID, string(detail), FormatTS(time.Now(
 	}
 
 	// 3. Strip the source name from the surviving assets' sources[].
+	// The scan runs in a scope that ALWAYS closes the rows (defer)
+	// BEFORE the UPDATE loop below — the early release keeps the
+	// long UPDATE pass from holding the read cursor open.
 	rows, err := tx.QueryContext(ctx, `SELECT id, sources FROM assets WHERE sources LIKE ?`, "%\""+name+"\"%")
 	if err != nil {
 		return stats, err
@@ -551,17 +550,18 @@ VALUES (?, 'retract-source', ?, ?)`, rule.ID, string(detail), FormatTS(time.Now(
 		src string
 	}
 	var hits []idSrc
-	for rows.Next() {
-		var h idSrc
-		if err := rows.Scan(&h.id, &h.src); err != nil {
-			rows.Close()
-			return stats, err
+	if scanErr := func() error {
+		defer func() { _ = rows.Close() }()
+		for rows.Next() {
+			var h idSrc
+			if err := rows.Scan(&h.id, &h.src); err != nil {
+				return err
+			}
+			hits = append(hits, h)
 		}
-		hits = append(hits, h)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return stats, err
+		return rows.Err()
+	}(); scanErr != nil {
+		return stats, scanErr
 	}
 	for _, h := range hits {
 		merged, _ := json.Marshal(removeString(jsonSources(h.src), name))
@@ -573,15 +573,15 @@ VALUES (?, 'retract-source', ?, ?)`, rule.ID, string(detail), FormatTS(time.Now(
 	// 4. Assets left with no observation, no service and no source name
 	// are index-invisible rows: delete them.
 	if err := tx.QueryRowContext(ctx, `SELECT count(*) FROM assets a WHERE
-		  NOT EXISTS (SELECT 1 FROM observations o WHERE o.asset_id = a.id)
-		  AND NOT EXISTS (SELECT 1 FROM services s WHERE s.asset_id = a.id)
-		  AND (a.sources = '[]' OR json_array_length(a.sources) = 0)`).Scan(&stats.AssetsRetracted); err != nil {
+                  NOT EXISTS (SELECT 1 FROM observations o WHERE o.asset_id = a.id)
+                  AND NOT EXISTS (SELECT 1 FROM services s WHERE s.asset_id = a.id)
+                  AND (a.sources = '[]' OR json_array_length(a.sources) = 0)`).Scan(&stats.AssetsRetracted); err != nil {
 		return stats, err
 	}
 	if _, err := tx.ExecContext(ctx, `DELETE FROM assets WHERE
-		  NOT EXISTS (SELECT 1 FROM observations o WHERE o.asset_id = assets.id)
-		  AND NOT EXISTS (SELECT 1 FROM services s WHERE s.asset_id = assets.id)
-		  AND (assets.sources = '[]' OR json_array_length(assets.sources) = 0)`); err != nil {
+                  NOT EXISTS (SELECT 1 FROM observations o WHERE o.asset_id = assets.id)
+                  AND NOT EXISTS (SELECT 1 FROM services s WHERE s.asset_id = assets.id)
+                  AND (assets.sources = '[]' OR json_array_length(assets.sources) = 0)`); err != nil {
 		return stats, err
 	}
 
@@ -628,7 +628,7 @@ FROM suppression_applications ORDER BY id DESC LIMIT ?`, limit)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: cannot list suppression applications: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []SuppressionApplication
 	for rows.Next() {
 		var a SuppressionApplication

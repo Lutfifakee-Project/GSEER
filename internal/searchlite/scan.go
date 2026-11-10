@@ -79,12 +79,11 @@ func decodeStrings(s string) []string {
 
 // scanCell holds one column's scan target and its post-processing.
 type scanCell struct {
-	kind string // dispatch key
+	kind string // dispatch key into applyKinds ("" = bound directly)
 	// one of the scan slots (bound directly), or the raw slot.
-	str    sql.NullString
-	num    sql.NullInt64
-	raw    any
-	finish func(r *search.Row) // deferred decode (nil when bound directly)
+	str sql.NullString
+	num sql.NullInt64
+	raw any
 }
 
 // scanRow binds one result row to a search.Row by column name.
@@ -109,75 +108,52 @@ func scanRow(rows *sql.Rows) (search.Row, error) {
 	return r, nil
 }
 
-// bindCell picks the scan slot for one projected column.
+// bindCell picks the scan slot for one projected column.  The
+// scanBindings table maps every projected column name to its slot
+// constructor; unknown columns fall through to a discard buffer.
 func bindCell(r *search.Row, col string) scanCell {
-	switch col {
-	case "row_id":
-		return scanCell{raw: &r.RowID}
-	case "row_kind":
-		return scanCell{raw: &r.RowKind}
-	case "asset_id":
-		return scanCell{raw: &r.AssetID}
-	case "asset_kind":
-		return scanCell{raw: &r.AssetKind}
-	case "asset_value":
-		return scanCell{raw: &r.AssetValue}
-	case "ip":
-		return scanCell{kind: "ip", finish: func(r *search.Row) {}}
-	case "domain":
-		return scanCell{raw: &r.Domain}
-	case "hostname":
-		return scanCell{raw: &r.Hostname}
-	case "asn":
-		return scanCell{kind: "asn", finish: func(r *search.Row) {}}
-	case "asn_org":
-		return scanCell{raw: &r.ASNOrg}
-	case "geo_country":
-		return scanCell{raw: &r.GeoCountry}
-	case "geo_region":
-		return scanCell{raw: &r.GeoRegion}
-	case "geo_city":
-		return scanCell{raw: &r.GeoCity}
-	case "port":
-		return scanCell{kind: "port", finish: func(r *search.Row) {}}
-	case "transport":
-		return scanCell{raw: &r.Transport}
-	case "protocol":
-		return scanCell{raw: &r.Protocol}
-	case "name":
-		return scanCell{raw: &r.Name}
-	case "product":
-		return scanCell{raw: &r.Product}
-	case "version":
-		return scanCell{raw: &r.Version}
-	case "http_status":
-		return scanCell{kind: "http_status", finish: func(r *search.Row) {}}
-	case "http_title":
-		return scanCell{raw: &r.HTTPTitle}
-	case "http_server":
-		return scanCell{raw: &r.HTTPServer}
-	case "tls_version":
-		return scanCell{raw: &r.TLSVersion}
-	case "cert_subject_cn":
-		return scanCell{raw: &r.TLSCertSubjectCN}
-	case "cert_issuer_cn":
-		return scanCell{raw: &r.TLSCertIssuerCN}
-	case "cert_expiry":
-		return scanCell{kind: "cert_expiry", finish: func(r *search.Row) {}}
-	case "technologies":
-		return scanCell{kind: "technologies", raw: new(any), finish: func(r *search.Row) {}}
-	case "sources":
-		return scanCell{kind: "sources", raw: new(any), finish: func(r *search.Row) {}}
-	case "first_seen":
-		return scanCell{kind: "first_seen", finish: func(r *search.Row) {}}
-	case "last_seen":
-		return scanCell{kind: "last_seen", finish: func(r *search.Row) {}}
-	case "stale":
-		return scanCell{kind: "stale", finish: func(r *search.Row) {}}
-	default:
-		var discard any
-		return scanCell{raw: &discard}
+	if newCell, ok := scanBindings[col]; ok {
+		return newCell(r)
 	}
+	var discard any
+	return scanCell{raw: &discard}
+}
+
+// scanBindings maps each projected column name to the scanCell it
+// binds.  Direct columns return a raw pointer into the Row; deferred
+// columns return a kind-keyed cell that apply copies after the Scan.
+var scanBindings = map[string]func(*search.Row) scanCell{
+	"row_id":          func(r *search.Row) scanCell { return scanCell{raw: &r.RowID} },
+	"row_kind":        func(r *search.Row) scanCell { return scanCell{raw: &r.RowKind} },
+	"asset_id":        func(r *search.Row) scanCell { return scanCell{raw: &r.AssetID} },
+	"asset_kind":      func(r *search.Row) scanCell { return scanCell{raw: &r.AssetKind} },
+	"asset_value":     func(r *search.Row) scanCell { return scanCell{raw: &r.AssetValue} },
+	"ip":              func(*search.Row) scanCell { return scanCell{kind: "ip"} },
+	"domain":          func(r *search.Row) scanCell { return scanCell{raw: &r.Domain} },
+	"hostname":        func(r *search.Row) scanCell { return scanCell{raw: &r.Hostname} },
+	"asn":             func(*search.Row) scanCell { return scanCell{kind: "asn"} },
+	"asn_org":         func(r *search.Row) scanCell { return scanCell{raw: &r.ASNOrg} },
+	"geo_country":     func(r *search.Row) scanCell { return scanCell{raw: &r.GeoCountry} },
+	"geo_region":      func(r *search.Row) scanCell { return scanCell{raw: &r.GeoRegion} },
+	"geo_city":        func(r *search.Row) scanCell { return scanCell{raw: &r.GeoCity} },
+	"port":            func(*search.Row) scanCell { return scanCell{kind: "port"} },
+	"transport":       func(r *search.Row) scanCell { return scanCell{raw: &r.Transport} },
+	"protocol":        func(r *search.Row) scanCell { return scanCell{raw: &r.Protocol} },
+	"name":            func(r *search.Row) scanCell { return scanCell{raw: &r.Name} },
+	"product":         func(r *search.Row) scanCell { return scanCell{raw: &r.Product} },
+	"version":         func(r *search.Row) scanCell { return scanCell{raw: &r.Version} },
+	"http_status":     func(*search.Row) scanCell { return scanCell{kind: "http_status"} },
+	"http_title":      func(r *search.Row) scanCell { return scanCell{raw: &r.HTTPTitle} },
+	"http_server":     func(r *search.Row) scanCell { return scanCell{raw: &r.HTTPServer} },
+	"tls_version":     func(r *search.Row) scanCell { return scanCell{raw: &r.TLSVersion} },
+	"cert_subject_cn": func(r *search.Row) scanCell { return scanCell{raw: &r.TLSCertSubjectCN} },
+	"cert_issuer_cn":  func(r *search.Row) scanCell { return scanCell{raw: &r.TLSCertIssuerCN} },
+	"cert_expiry":     func(*search.Row) scanCell { return scanCell{kind: "cert_expiry"} },
+	"technologies":    func(*search.Row) scanCell { return scanCell{kind: "technologies", raw: new(any)} },
+	"sources":         func(*search.Row) scanCell { return scanCell{kind: "sources", raw: new(any)} },
+	"first_seen":      func(*search.Row) scanCell { return scanCell{kind: "first_seen"} },
+	"last_seen":       func(*search.Row) scanCell { return scanCell{kind: "last_seen"} },
+	"stale":           func(*search.Row) scanCell { return scanCell{kind: "stale"} },
 }
 
 // numericKinds scan into the integer slot.
@@ -194,56 +170,73 @@ func (c *scanCell) scanTarget() any {
 	return &c.str
 }
 
-// apply copies the scanned cell into the Row (deferred decodes).
-func (c *scanCell) apply(r *search.Row) {
-	switch c.kind {
-	case "":
-		return // bound directly
-	case "ip":
+// applyKinds maps each deferred-decode kind to its post-Scan copy into
+// the Row (the per-column semantics that used to live in a switch).
+var applyKinds = map[string]func(*scanCell, *search.Row){
+	"ip": func(c *scanCell, r *search.Row) {
 		if c.str.Valid && c.str.String != "" {
 			s := c.str.String
 			r.IP = &s
 		}
-	case "port":
+	},
+	"port": func(c *scanCell, r *search.Row) {
 		if c.num.Valid {
 			p := int(c.num.Int64)
 			r.Port = &p
 		}
-	case "asn":
+	},
+	"asn": func(c *scanCell, r *search.Row) {
 		if c.num.Valid {
 			a := int(c.num.Int64)
 			r.ASN = &a
 		}
-	case "http_status":
+	},
+	"http_status": func(c *scanCell, r *search.Row) {
 		if c.num.Valid {
 			h := int(c.num.Int64)
 			r.HTTPStatus = &h
 		}
-	case "cert_expiry":
+	},
+	"cert_expiry": func(c *scanCell, r *search.Row) {
 		if c.str.Valid && c.str.String != "" {
 			if t, err := parseTS(c.str.String); err == nil {
 				r.TLSCertExpiry = &t
 			}
 		}
-	case "technologies":
+	},
+	"technologies": func(c *scanCell, r *search.Row) {
 		r.Technologies = jsonStrings(*(c.raw.(*any)))
-	case "sources":
+	},
+	"sources": func(c *scanCell, r *search.Row) {
 		r.Sources = jsonStrings(*(c.raw.(*any)))
-	case "first_seen":
+	},
+	"first_seen": func(c *scanCell, r *search.Row) {
 		if c.str.Valid && c.str.String != "" {
 			if t, err := parseTS(c.str.String); err == nil {
 				r.FirstSeen = t
 			}
 		}
-	case "last_seen":
+	},
+	"last_seen": func(c *scanCell, r *search.Row) {
 		if c.str.Valid && c.str.String != "" {
 			if t, err := parseTS(c.str.String); err == nil {
 				r.LastSeen = t
 			}
 		}
-	case "stale":
+	},
+	"stale": func(c *scanCell, r *search.Row) {
 		if c.num.Valid && c.num.Int64 != 0 {
 			r.Stale = true
 		}
+	},
+}
+
+// apply copies the scanned cell into the Row (deferred decodes).
+func (c *scanCell) apply(r *search.Row) {
+	if c.kind == "" {
+		return // bound directly
+	}
+	if fn, ok := applyKinds[c.kind]; ok {
+		fn(c, r)
 	}
 }

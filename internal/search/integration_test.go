@@ -201,12 +201,17 @@ func TestSearchQueryErrors(t *testing.T) {
 	defer cleanup()
 	ctx := context.Background()
 
+	// `port == "443"` is NOT an error anymore: the GQL compatibility
+	// layer coerces quoted integers in place (checkType in
+	// internal/gql/validator), matching how hosted-engine compat
+	// clients quote every value.  The strict-typing probe therefore
+	// uses a quoted value that cannot coerce.
 	cases := []struct {
 		name string
 		gql  string
 	}{
 		{"unknown field", `bogusfield == 1`},
-		{"type violation", `port == "443"`},
+		{"type violation", `port == "not-a-number"`},
 		{"op violation", `port CONTAINS "443"`},
 		{"parse error", `port ==`},
 		{"lex error", `port == "unterminated`},

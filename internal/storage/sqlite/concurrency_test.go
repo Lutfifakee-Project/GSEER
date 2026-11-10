@@ -24,6 +24,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -45,6 +46,9 @@ func TestBuildDSNExoticPaths(t *testing.T) {
 	}
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {
+			if runtime.GOOS == "windows" && name == "quest?ion.db" {
+				t.Skip("'?' is a reserved filename character on Windows (the filesystem cannot create it); the DSN round-trip itself is exercised by the other cases on every platform")
+			}
 			path := filepath.Join(t.TempDir(), name)
 			res, err := Open(path)
 			if err != nil {

@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -388,7 +389,7 @@ func TestSuppressionGateSkipsAndAudits(t *testing.T) {
 
 	// The backstop trigger refuses RAW writes too — no bypass.
 	_, err = s.DB.Exec(`INSERT INTO assets (kind, value, ip, first_seen, last_seen, sources)
-		VALUES ('ip', '198.51.100.66', '198.51.100.66', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'), '[]')`)
+                VALUES ('ip', '198.51.100.66', '198.51.100.66', strftime('%Y-%m-%dT%H:%M:%fZ','now'), strftime('%Y-%m-%dT%H:%M:%fZ','now'), '[]')`)
 	if err == nil {
 		t.Fatal("the GSUP1 backstop trigger must refuse raw SQL writes")
 	}
@@ -446,7 +447,7 @@ func TestSuppressionFailClosedOnBrokenRule(t *testing.T) {
 	// A rule the matcher cannot compile (bad CIDR) lands in the table
 	// only via a bypassed write path — simulate with direct SQL.
 	if _, err := s.DB.Exec(`INSERT INTO suppressions (kind, value, reason, created_by, created_at, enabled)
-		VALUES ('cidr', '999.999.0.0/16', 'broken', 'test', ?, 1)`, FormatTS(time.Now())); err != nil {
+                VALUES ('cidr', '999.999.0.0/16', 'broken', 'test', ?, 1)`, FormatTS(time.Now())); err != nil {
 		t.Fatalf("seed broken rule: %v", err)
 	}
 	f := assetFact(src, storage.AssetKindIP, "198.51.100.90")
@@ -615,6 +616,9 @@ func TestStatsCounts(t *testing.T) {
 // TestOpenPermissions (SQ-04) — fresh file 0600, dir 0700, loose
 // existing file gets a PermNote, not a silent widening.
 func TestOpenPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("SQ-04 asserts POSIX permission bits; on Windows Stat reports fixed 0666/0777 masks and chmod is a best-effort no-op by design (open.go isNoChmodOS) — the contract is enforced and verified on POSIX")
+	}
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sub", "gseer.db")
 	res, err := Open(path)

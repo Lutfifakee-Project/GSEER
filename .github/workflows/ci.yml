@@ -186,8 +186,15 @@ jobs:
       - name: Snapshot build compiles the full matrix (REL-02)
         # Builds linux/darwin/windows x amd64/arm64 without publishing
         # anything; proves builds.main (./cmd/gseer) and the ldflags
-        # version metadata resolve for every configured target.
-        run: goreleaser build --snapshot --clean
+        # version metadata resolve for every configured target.  Runs
+        # THROUGH the action (same pinned CLI v2.20.0): the action
+        # invokes the CLI inside its own step and does not leave the
+        # binary on PATH for a later bare `run:` step.
+        uses: goreleaser/goreleaser-action@v2.9.1
+        with:
+          distribution: goreleaser
+          version: v2.20.0
+          args: build --snapshot --clean
 
   # Search ≠ Scan is the most important architectural property of GSEER
   # (the import graph never lets a collector/egress package reach the

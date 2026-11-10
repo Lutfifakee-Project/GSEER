@@ -30,6 +30,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -40,8 +41,14 @@ import (
 func entrypoints(t *testing.T) (canonical, rootMain string) {
 	t.Helper()
 	dir := t.TempDir()
-	canonical = filepath.Join(dir, "gseer-canon")
-	rootMain = filepath.Join(dir, "gseer-root")
+	// Windows only executes images whose name carries the .exe
+	// extension — `go build -o name` writes the bare name verbatim.
+	exe := ""
+	if runtime.GOOS == "windows" {
+		exe = ".exe"
+	}
+	canonical = filepath.Join(dir, "gseer-canon"+exe)
+	rootMain = filepath.Join(dir, "gseer-root"+exe)
 	build := func(out, pkg string) {
 		t.Helper()
 		cmd := exec.Command("go", "build", "-o", out, pkg)

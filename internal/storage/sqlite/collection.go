@@ -71,13 +71,13 @@ func (s *Store) EnsureSource(ctx context.Context, name, connector, termsRef stri
 		switch {
 		case err == nil:
 			_, err = tx.ExecContext(ctx, `UPDATE data_sources
-				SET connector = ?, terms_ref = ?, config = ? WHERE id = ?`,
+                                SET connector = ?, terms_ref = ?, config = ? WHERE id = ?`,
 				connector, termsRef, cfgJSON, id)
 			return err
 		case isNoRows(err):
 			res, ierr := tx.ExecContext(ctx, `INSERT INTO data_sources
-				(name, connector, terms_ref, config, enabled, created_at)
-				VALUES (?, ?, ?, ?, 0, ?)`,
+                                (name, connector, terms_ref, config, enabled, created_at)
+                                VALUES (?, ?, ?, ?, 0, ?)`,
 				name, connector, termsRef, cfgJSON, FormatTS(time.Now().UTC()))
 			if ierr != nil {
 				return ierr
@@ -116,7 +116,7 @@ FROM data_sources ORDER BY id`)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: cannot list sources: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []DataSourceRow
 	for rows.Next() {
 		r, ok, err := scanSourceRow(rows)
@@ -187,7 +187,7 @@ func scanSourceRow(rows *sql.Rows) (DataSourceRow, bool, error) {
 // StartCollectionJob opens a collection_jobs row (status running).
 func (s *Store) StartCollectionJob(ctx context.Context, sourceID int64, kind string) (int64, error) {
 	res, err := s.DB.ExecContext(ctx, `INSERT INTO collection_jobs
-		(source_id, kind, status, started_at) VALUES (?, ?, 'running', ?)`,
+                (source_id, kind, status, started_at) VALUES (?, ?, 'running', ?)`,
 		sourceID, kind, FormatTS(time.Now().UTC()))
 	if err != nil {
 		return 0, fmt.Errorf("sqlite: cannot start collection job: %w", err)
@@ -204,7 +204,7 @@ func (s *Store) FinishCollectionJob(ctx context.Context, jobID int64, status str
 		}
 	}
 	_, err := s.DB.ExecContext(ctx, `UPDATE collection_jobs
-		SET status = ?, stats = ?, error = ?, finished_at = ? WHERE id = ?`,
+                SET status = ?, stats = ?, error = ?, finished_at = ? WHERE id = ?`,
 		status, statsJSON, errMsg, FormatTS(time.Now().UTC()), jobID)
 	if err != nil {
 		return fmt.Errorf("sqlite: cannot finish collection job %d: %w", jobID, err)
@@ -247,8 +247,8 @@ func (s *Store) AddDeadLetter(ctx context.Context, sourceID int64, payload map[s
 	}
 	now := FormatTS(time.Now().UTC())
 	_, err := s.DB.ExecContext(ctx, `INSERT INTO ingestion_dead_letter
-		(source_id, payload, reason, status, created_at, updated_at)
-		VALUES (?, ?, ?, 'pending', ?, ?)`, sourceID, payloadJSON, reason, now, now)
+                (source_id, payload, reason, status, created_at, updated_at)
+                VALUES (?, ?, ?, 'pending', ?, ?)`, sourceID, payloadJSON, reason, now, now)
 	if err != nil {
 		return fmt.Errorf("sqlite: cannot add dead letter: %w", err)
 	}
@@ -262,7 +262,7 @@ func (s *Store) DeadLetterStats(ctx context.Context) (map[int64]int, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: cannot read dead letter stats: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	out := map[int64]int{}
 	for rows.Next() {
 		var id int64
@@ -287,7 +287,7 @@ ORDER BY id LIMIT ?`, sourceID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: cannot read pending dead letters: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []DeadLetterRecord
 	for rows.Next() {
 		var r DeadLetterRecord
@@ -302,7 +302,7 @@ ORDER BY id LIMIT ?`, sourceID, limit)
 // ResolveDeadLetter marks one dead letter resolved.
 func (s *Store) ResolveDeadLetter(ctx context.Context, id int64, note string) error {
 	_, err := s.DB.ExecContext(ctx, `UPDATE ingestion_dead_letter
-		SET status = 'resolved', resolve_note = ?, updated_at = ? WHERE id = ?`,
+                SET status = 'resolved', resolve_note = ?, updated_at = ? WHERE id = ?`,
 		note, FormatTS(time.Now().UTC()), id)
 	if err != nil {
 		return fmt.Errorf("sqlite: cannot resolve dead letter %d: %w", id, err)
@@ -313,7 +313,7 @@ func (s *Store) ResolveDeadLetter(ctx context.Context, id int64, note string) er
 // FailDeadLetter marks one dead letter failed.
 func (s *Store) FailDeadLetter(ctx context.Context, id int64, failure string) error {
 	_, err := s.DB.ExecContext(ctx, `UPDATE ingestion_dead_letter
-		SET status = 'failed', failure = ?, updated_at = ? WHERE id = ?`,
+                SET status = 'failed', failure = ?, updated_at = ? WHERE id = ?`,
 		failure, FormatTS(time.Now().UTC()), id)
 	if err != nil {
 		return fmt.Errorf("sqlite: cannot fail dead letter %d: %w", id, err)
@@ -328,7 +328,7 @@ func (s *Store) DiscardDeadLetters(ctx context.Context, sourceID int64, limit in
 		limit = 50
 	}
 	res, err := s.DB.ExecContext(ctx, `DELETE FROM ingestion_dead_letter
-		WHERE source_id = ? AND id IN (SELECT id FROM ingestion_dead_letter WHERE source_id = ? ORDER BY id LIMIT ?)`,
+                WHERE source_id = ? AND id IN (SELECT id FROM ingestion_dead_letter WHERE source_id = ? ORDER BY id LIMIT ?)`,
 		sourceID, sourceID, limit)
 	if err != nil {
 		return 0, fmt.Errorf("sqlite: cannot discard dead letters: %w", err)
@@ -349,7 +349,7 @@ ORDER BY last_seen DESC LIMIT ?`, kind, limit)
 	if err != nil {
 		return nil, fmt.Errorf("sqlite: cannot read index seeds: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var out []string
 	for rows.Next() {
 		var v string
