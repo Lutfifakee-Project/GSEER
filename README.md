@@ -59,6 +59,13 @@ Everything runs on your machine: your database, your data, your rules.
 > Docker image for this release. Build from source (below), or build the
 > Docker image locally via the `Dockerfile`. Docker is the easiest way
 > to satisfy the PostgreSQL dependency.
+>
+> **v0.2.1 (compatible increment)** adds the GQL compatibility layer
+> (`*=`, free text, field aliases), **personal mode on SQLite** — a
+> single-file database with no PostgreSQL dependency — and release
+> engineering (validated release config, `go install` support,
+> draft-gated releases).  See `RELEASE_NOTES_v0.2.1.md`.  PostgreSQL
+> remains the primary engine for the self-hosted server profile.
 
 ## Quick Start
 
@@ -68,9 +75,11 @@ Copy-paste, in order. Total time: a few minutes.
 # 1. Build the binary (requires Go 1.26+)
 git clone https://github.com/Lutfifakee-Project/GSEER.git
 cd GSEER
-make build VERSION=v0.2.0
+make build VERSION=v0.2.1
 ./bin/gseer version
-#   → gseer v0.2.0
+#   → gseer v0.2.1
+#   (or, without cloning:
+#    go install github.com/Lutfifakee-Project/GSEER/cmd/gseer@v0.2.1)
 #   (optional: sudo cp bin/gseer /usr/local/bin/ so `gseer` is on PATH)
 
 # 2. Write the compose file + a .env with a random database password

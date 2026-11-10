@@ -3,6 +3,47 @@
 All notable changes per release.  Format: Keep-a-Changelog-ish, newest
 first.  Versions follow semver (three-component).
 
+## [v0.2.1] — Compatibility Layer, Personal Mode, Release Engineering
+
+Compatible increment over v0.2.0.  PostgreSQL stays the primary engine
+for self-hosted server deployments; SQLite personal mode is additive
+and profile-gated.  No security boundary is weakened.
+
+### Added
+
+- **GQL compatibility layer**: `*=` suffix-anchored fuzzy match, bare
+  free text, `after`/`before` rewrites, derived booleans, empty-value
+  semantics, quoted-integer coercion (`port="443"`), field aliases
+  (`org`, `app`, `base_protocol`, `status_code`, `cert.subject.cn`),
+  and the `host` alias matching hostname OR IP.  Grammar + examples in
+  `docs/SEARCH-SYNTAX.md`.
+- **Personal mode on SQLite** (`gseer setup --personal`,
+  `GSEER_PROFILE=personal`): single-file DB (default
+  `~/.gseer/gseer.db`) with the SQ-01…SQ-06 remediation set (upsert
+  FirstSeen consistency, millisecond timestamps, DSN special-character
+  safety, 0600/0700 file-permission policy, single-writer WAL +
+  `busy_timeout`, deny-wins suppression race with audit rows and
+  fail-closed expiry), a dedicated SQLite search planner with
+  PostgreSQL-parity tests, and `gseer db backup` / `gseer db restore`.
+- **Release engineering (REL-01/02/03)**: module-root `main` as a pure
+  `cli.Execute` delegate so `go install .../cmd/gseer@v0.2.1` works,
+  validated GoReleaser v2.20.0 configuration with a green snapshot
+  matrix, pinned release workflow producing draft releases only, and a
+  CI release-config validation job.
+
+### Fixed
+
+- Single-host `/32` CIDR text-equality and suffix-wildcard matching
+  (`ip *= "*.10"`) via `host(inet)` instead of masked `ip::text`.
+- Quoted integer literals (`port="443"`, `port IN (80,"443")`) coerce
+  in place; non-numeric quoted values still fail with a typed error
+  and hint.
+
+### Docs
+
+- Neutral engine references outside `docs/SOURCES.md` (brand policy);
+  `.gitignore` safety net for personal-mode SQLite artifacts.
+
 ## [v0.2.0] — Hardened Self-Hosted Readiness
 
 The hardened deployment model owner-approved as OD-1…OD-7 (Revision
