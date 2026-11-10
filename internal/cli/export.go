@@ -27,6 +27,7 @@ import (
 	"github.com/Lutfifakee-Project/GSEER/internal/config"
 	"github.com/Lutfifakee-Project/GSEER/internal/export"
 	"github.com/Lutfifakee-Project/GSEER/internal/search"
+	"github.com/Lutfifakee-Project/GSEER/internal/searchlite"
 )
 
 // export.go — `gseer export` (v0.1.0, owner directive §4): stream a GQL
@@ -122,12 +123,28 @@ func runExport(cmd *cobra.Command, args []string) error {
 		out = cmd.ErrOrStderr()
 	}
 
-	pool, err := openAppPool(cmd, cfg)
-	if err != nil {
-		return err
+	// Backend selection: the personal profile exports through the
+	// embedded SQLite service (the same stream, the same formats);
+	// the self-hosted profile goes through the PostgreSQL service.
+	// The client profile was refused above (no local data).
+	var svc export.Searcher
+	if cfg.Profile == config.ProfilePersonal {
+		res, oerr := openPersonal(cfg)
+		if oerr != nil {
+			printf(out, "E_DB_UNAVAILABLE: cannot open the personal database\nWhy: %v\nTry: gseer setup --personal\n", oerr)
+			exitWith(ExitUnavailable)
+			return nil
+		}
+		defer func() { _ = res.DB.Close() }()
+		svc = searchlite.New(res.DB)
+	} else {
+		pool, err := openAppPool(cmd, cfg)
+		if err != nil {
+			return err
+		}
+		defer pool.Close()
+		svc = search.New(pool)
 	}
-	defer pool.Close()
-	svc := search.New(pool)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second+maxDuration(fTimeout, 0))
 	defer cancel()

@@ -133,6 +133,13 @@ func runHost(cmd *cobra.Command, args []string) error {
 		printf(out, "E_CONFIG: %s\nTry: gseer setup --help\n", cerr.Error())
 		exitWith(ExitConfig)
 	}
+	if cfg.Profile == config.ProfilePersonal {
+		printf(out, "E_PROFILE_UNSUPPORTED: `gseer host` is not wired for personal mode yet\n"+
+			"Why: the host report runs through the PostgreSQL service; personal mode (SQLite) covers search, export, suppression, and backup in v0.2.x\n"+
+			"Try: gseer search '%s'   (the same identifiers are searchable in personal mode)\n", identifier)
+		exitWith(ExitConfig)
+		return nil
+	}
 	if cfg.Profile != config.ProfileSelfHosted {
 		printf(out, "E_CLIENT_ONLY: `gseer host` inspects the LOCAL index (self-hosted profile)\n"+
 			"Why: the client profile holds no data; use the server's dashboard/API against a remote instance\n"+

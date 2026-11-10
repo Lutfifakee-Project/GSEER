@@ -30,7 +30,9 @@ import (
 
 	"github.com/Lutfifakee-Project/GSEER/internal/config"
 	"github.com/Lutfifakee-Project/GSEER/internal/search"
+	"github.com/Lutfifakee-Project/GSEER/internal/searchlite"
 	"github.com/Lutfifakee-Project/GSEER/internal/storage/postgres"
+	"github.com/Lutfifakee-Project/GSEER/internal/storage/sqlite"
 	"github.com/Lutfifakee-Project/GSEER/internal/version"
 )
 
@@ -67,6 +69,9 @@ Wired:
   - runtime credential + fail-closed privilege audit (self-hosted, v0.2.0
     OD-5: PASS means gseer server start may bind; FAIL names the failures;
     HINT when the runtime credential is not provisioned yet)
+  - personal mode (v0.2.1): database file + permissions, SQLite migration
+    state, and the same index-contents honesty contract (read-only: the
+    doctor never creates or migrates the personal database)
 
 Doctor MUST NOT show a generic "healthy" that hides an empty or fixture-
 filled index (QS-4 normative).  Doctor is read-only: it never migrates.`,
@@ -114,6 +119,17 @@ filled index (QS-4 normative).  Doctor is read-only: it never migrates.`,
 			report("binary", "PASS", fmt.Sprintf("version %s, commit %s, built %s, %s/%s, sha256=%s",
 				info.Version, orUnknown(info.Commit), orUnknown(info.BuiltAt),
 				runtime.GOOS, runtime.GOARCH, binarySHA256()), "", nil)
+
+			if cfg.Profile == config.ProfilePersonal {
+				reportPersonalDBChecks(cmd, cfg, report)
+				printf(out, "\n%d PASS, %d FAIL", pass, fail)
+				if fail > 0 {
+					println(out, ". Fix the failures above and re-run.")
+					os.Exit(ExitUnavailable)
+				}
+				println(out, ".")
+				return nil
+			}
 
 			if cfg.Profile != config.ProfileSelfHosted {
 				// Client profile: probe the configured endpoint.
@@ -210,6 +226,73 @@ func reportRuntimeCredentialCheck(cmd *cobra.Command, cfg *config.Config, report
 		"fail-closed effective-privilege audit passed under the gseer_app runtime credential (OD-5)", "", nil)
 }
 
+// reportPersonalDBChecks runs the personal-mode doctor checks against
+// the configured SQLite file: file presence (WITHOUT creating it —
+// doctor is strictly read-only and sqlite.Open would create the file),
+// permissions note, read-only migration state, and the same
+// index-contents honesty contract as the self-hosted path.
+func reportPersonalDBChecks(cmd *cobra.Command, cfg *config.Config, report func(name, outcome, detail, fix string, err error)) {
+	if _, serr := os.Stat(cfg.Database.DSN); serr != nil {
+		report("personal database", "FAIL", "the personal database file does not exist",
+			"gseer setup --personal", serr)
+		return
+	}
+	res, err := sqlite.Open(cfg.Database.DSN)
+	if err != nil {
+		report("personal database", "FAIL", "cannot open the personal database",
+			"gseer setup --personal", err)
+		return
+	}
+	defer func() { _ = res.DB.Close() }()
+	detail := res.Path
+	if res.PermNote != "" {
+		detail += " — " + res.PermNote
+	}
+	report("personal database", "PASS", detail, "", nil)
+
+	ctx := commandContext(cmd)
+	st, merr := sqlite.GetMigrationStatus(ctx, res.DB)
+	if merr != nil {
+		report("migrations", "FAIL", "cannot read the migration state", "gseer doctor", merr)
+		return
+	}
+	if st.State != sqlite.StateAtHead {
+		fix := "re-run: gseer setup --personal"
+		if st.State == sqlite.StateDirty {
+			fix = "restore a backup (gseer db restore) or recreate the database (gseer setup --personal)"
+		}
+		report("migrations", "FAIL",
+			fmt.Sprintf("schema %s (v%d, head v%d)", st.State, st.Version, st.Head), fix, nil)
+		return
+	}
+	report("migrations", "PASS", fmt.Sprintf("schema at head v%d", st.Head), "", nil)
+
+	meta, qerr := searchlite.New(res.DB).Stats(ctx)
+	if qerr != nil {
+		report("index", "FAIL", "index query failed", "gseer doctor", qerr)
+		return
+	}
+	reportIndexMeta(meta, report)
+}
+
+// reportIndexMeta renders the shared IndexMeta honesty contract
+// (EMPTY hint / fixture label / live counts) for both the PostgreSQL
+// and the personal path.
+func reportIndexMeta(meta *search.IndexMeta, report func(name, outcome, detail, fix string, err error)) {
+	switch {
+	case meta.Empty:
+		report("index", "HINT", "EMPTY — no assets or services ingested yet",
+			"for evaluation data run: gseer setup --load-fixtures", nil)
+	case meta.FixtureOnly:
+		report("index", "HINT", fmt.Sprintf("contains FIXTURE data — %d assets, %d services, %d observations (SYNTHETIC, not real internet data)",
+			meta.Assets, meta.Services, meta.Observations),
+			"remove with: gseer setup --purge-fixtures", nil)
+	default:
+		report("index", "PASS", fmt.Sprintf("%d assets, %d services, %d observations (last observed %s)",
+			meta.Assets, meta.Services, meta.Observations, orNever(meta.LastObserved)), "", nil)
+	}
+}
+
 // reportIndexCheck reports the QS-4 index-contents honesty check:
 // EMPTY (HINT with the load pointer), fixture-labeled (HINT with the
 // synthetic-data label), or live counts (PASS).
@@ -226,18 +309,7 @@ func reportIndexCheck(cmd *cobra.Command, cfg *config.Config, report func(name, 
 		report("index", "FAIL", "index query failed", "gseer db migrate status", serr)
 		return
 	}
-	switch {
-	case meta.Empty:
-		report("index", "HINT", "EMPTY — no assets or services ingested yet",
-			"for evaluation data run: gseer setup --load-fixtures", nil)
-	case meta.FixtureOnly:
-		report("index", "HINT", fmt.Sprintf("contains FIXTURE data — %d assets, %d services, %d observations (SYNTHETIC, not real internet data)",
-			meta.Assets, meta.Services, meta.Observations),
-			"remove with: gseer setup --purge-fixtures", nil)
-	default:
-		report("index", "PASS", fmt.Sprintf("%d assets, %d services, %d observations (last observed %s)",
-			meta.Assets, meta.Services, meta.Observations, orNever(meta.LastObserved)), "", nil)
-	}
+	reportIndexMeta(meta, report)
 }
 
 // reportClientEndpoint probes the configured endpoint's health route

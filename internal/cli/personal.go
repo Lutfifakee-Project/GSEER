@@ -175,9 +175,9 @@ func runSetupPersonal(cmd *cobra.Command, dbPath string, loadFixtures bool) erro
 
 	printf(out, "\nNext:\n")
 	printf(out, "  gseer search 'port=443'         — query the index (personal mode)\n")
+	printf(out, "  gseer setup --load-fixtures     — load the synthetic evaluation corpus (optional)\n")
 	printf(out, "  gseer suppress add ip <ip> --reason \"...\"\n")
 	printf(out, "  gseer db backup --out <file>    — consistent backup (VACUUM INTO)\n")
-	printf(out, "  gseer server start              — serve the API + dashboard locally\n")
 	return nil
 }
 

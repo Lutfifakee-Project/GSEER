@@ -3,6 +3,55 @@
 All notable changes per release.  Format: Keep-a-Changelog-ish, newest
 first.  Versions follow semver (three-component).
 
+## [Unreleased] — Personal-Mode Wire-Up Fixes
+
+Found by the first real personal-mode walkthrough (`go install` →
+`setup --personal` → daily commands).  No security boundary is
+weakened; the PostgreSQL paths are untouched.
+
+### Fixed
+
+- **`go install` binaries report their real version.**  The version,
+  commit, and built_at fields fall back to the toolchain's own build
+  information (`debug.ReadBuildInfo`: module version, `vcs.revision`,
+  `vcs.time`) when no `-ldflags` injection is present — so
+  `go install .../cmd/gseer@v0.2.1` no longer prints
+  "gseer dev / commit unknown".  Values are never fabricated: a plain
+  development build keeps the honest "dev"/"unknown" reporting.
+- **`gseer doctor` runs real personal-mode checks.**  A personal
+  profile used to fall into the client branch ("DB checks: skipped
+  (client profile has no local database)" + a server-endpoint hint).
+  Doctor now checks the database file (existence first — it never
+  creates one), the read-only SQLite migration state, and the same
+  index-contents honesty contract (EMPTY / FIXTURE-labeled / counts).
+- **`gseer setup --load-fixtures` / `--purge-fixtures` follow the saved
+  personal profile.**  The standalone fixture actions tried to parse
+  the SQLite database FILE as a `postgres://` DSN
+  (`E_DB_UNREACHABLE: cannot parse …`).  They now ingest/purge through
+  the personal store behind the same QS-6 gate; the load output no
+  longer suggests `gseer server start`, which personal mode cannot run.
+- **`gseer export` works in personal mode.**  The exporter now pages
+  through any `Search` implementation (`export.Searcher`), so personal
+  mode streams the same JSON / CSV / NDJSON via the embedded SQLite
+  service.  The PostgreSQL path is byte-identical.
+- **Honest refusals instead of PostgreSQL errors on the personal
+  profile.**  `source` / `collect` (collection registry is
+  PostgreSQL-only) and `host` (report runs through the PostgreSQL
+  service) now refuse with `E_PROFILE_UNSUPPORTED` naming what is
+  missing and what to do, instead of a misleading
+  `E_DB_UNREACHABLE: cannot reach PostgreSQL`.
+- **`setup --personal` next-steps hint fixed**: it suggested
+  `gseer server start`, which refuses non-self-hosted profiles; the
+  hint now points at the personal surfaces (search, fixtures,
+  suppression, backup).
+
+### Added
+
+- Personal-mode test coverage: standalone fixture load/purge round
+  trip, doctor personal checks (including the read-only no-create
+  contract for a missing database file), the profile gates, and a
+  personal NDJSON export through the CLI.
+
 ## [v0.2.1] — Compatibility Layer, Personal Mode, Release Engineering
 
 Compatible increment over v0.2.0.  PostgreSQL stays the primary engine

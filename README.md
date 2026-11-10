@@ -46,8 +46,8 @@ Everything runs on your machine: your database, your data, your rules.
 
 | Component | Requirement |
 | --- | --- |
-| Go | 1.26+ (only for building from source) |
-| Docker + Compose | for the bundled PostgreSQL 17 (recommended path) |
+| Go | 1.26+ (only for `go install` / building from source — the binary itself has zero runtime dependencies) |
+| Docker + Compose | for the bundled PostgreSQL 17 (recommended path for the server profile) |
 | PostgreSQL | **16+** if you run your own (OD-7 floor enforced by `gseer setup` and `gseer doctor`; verified end-to-end on **16.15 and 17.2** — `docs/DEPLOYMENT.md`) |
 | OS | Linux / macOS / Windows |
 
@@ -69,54 +69,112 @@ Everything runs on your machine: your database, your data, your rules.
 
 ## Quick Start
 
-Copy-paste, in order. Total time: a few minutes.
+### Install the binary
+
+Copy-paste; needs Go 1.26+ (the built binary has zero runtime
+dependencies):
 
 ```bash
-# 1. Build the binary (requires Go 1.26+)
+# Easiest — no clone, no build script:
+go install github.com/Lutfifakee-Project/GSEER/cmd/gseer@v0.2.1
+gseer version
+#   → gseer v0.2.1 (version/commit/built_at come from the toolchain's
+#     own build info; `gseer doctor` prints the binary's SHA-256)
+
+# Or build from source:
 git clone https://github.com/Lutfifakee-Project/GSEER.git
 cd GSEER
 make build VERSION=v0.2.1
 ./bin/gseer version
-#   → gseer v0.2.1
-#   (or, without cloning:
-#    go install github.com/Lutfifakee-Project/GSEER/cmd/gseer@v0.2.1)
-#   (optional: sudo cp bin/gseer /usr/local/bin/ so `gseer` is on PATH)
+# (optional: sudo cp bin/gseer /usr/local/bin/ so `gseer` is on PATH)
+```
 
-# 2. Write the compose file + a .env with a random database password
+Platform archives land on the [Releases](https://github.com/Lutfifakee-Project/GSEER/releases)
+page after a maintainer publishes the draft; verify any download
+against `checksums.txt` (SHA-256) and the `sha256=` line of
+`gseer doctor`.
+
+### Path A — Personal mode (one SQLite file, no PostgreSQL, no Docker)
+
+For a single operator on a laptop or VPS. CLI surfaces only — search,
+export, suppression, backup (no API server; that is Path B).
+
+```bash
+# 1. Initialize the single-file database (~/.gseer/gseer.db; override
+#    the location with --db-path)
+gseer setup --personal
+
+# 2. Verify — doctor runs real personal checks now
+#    (database file, migration state, index honesty)
+gseer doctor
+
+# 3. The index starts EMPTY (honest — GSEER is the engine, not the
+#    data).  Load the labeled SYNTHETIC evaluation corpus to try every
+#    surface without collecting anything:
+gseer setup --load-fixtures          # asks for a y/yes confirmation
+gseer search 'port==443 && title CONTAINS "login"'
+gseer export 'port==443' --format csv --out results.csv
+
+# 4. Keep classes of records out of your index
+gseer suppress add cidr 10.0.0.0/8 --reason "RFC1918"
+gseer suppress list
+
+# 5. Consistent online backup / restore (VACUUM INTO)
+gseer db backup --out backup.db
+gseer db restore backup.db
+
+# 6. Real collection needs the self-hosted profile — the collection
+#    registry (sources, jobs, checkpoints, dead letters) is
+#    PostgreSQL-only.  `gseer source`/`collect` on a personal install
+#    refuse with E_PROFILE_UNSUPPORTED and point here:
+gseer setup --self-hosted --with-compose   # → Path B
+```
+
+### Path B — Self-hosted server (PostgreSQL + dashboard + API)
+
+```bash
+# 1. Write the compose file + a .env with a random database password
 gseer setup --self-hosted --with-compose
 
-# 3. Start PostgreSQL (healthcheck-gated)
+# 2. Start PostgreSQL (healthcheck-gated)
 docker compose up -d db
 docker compose ps db          # wait until it shows "healthy"
 
-# 4. Hardened setup — bootstrap → migrate → grants → audit, one command
+# 3. Hardened setup — bootstrap → migrate → grants → audit, one command
 gseer setup --self-hosted --db-url "$(grep '^GSEER_DSN=' .env | cut -d= -f2-)"
 #   → [ ok ] migrations: 8 applied, schema at head v17
 #   → [ ok ] privilege audit: PASSED (fail-closed gate, OD-5)
 #   → prints GSEER_DB_RUNTIME_DSN (the gseer_app credential) EXACTLY ONCE
 
-# 5. Make this shell self-hosted (setup does not rewrite your shell)
+# 4. Make this shell self-hosted (setup does not rewrite your shell)
 export GSEER_PROFILE=self-hosted
 export GSEER_DB_DSN="$(grep '^GSEER_DSN=' .env | cut -d= -f2-)"
-export GSEER_DB_RUNTIME_DSN='postgres://gseer_app:<from step 4>@127.0.0.1:5432/gseer?sslmode=disable'
+export GSEER_DB_RUNTIME_DSN='postgres://gseer_app:<from step 3>@127.0.0.1:5432/gseer?sslmode=disable'
 #   Without this, the CLI defaults to the client profile and doctor
 #   fails with E_CONFIG_REQUIRED (client.endpoint missing).  The server
 #   additionally REQUIRES the runtime credential — it never serves
 #   traffic under the operator credential (docs/DEPLOYMENT.md).
 
-# 6. Verify the installation
+# 5. Verify the installation
 gseer doctor
 #   → 6 PASS, 0 FAIL.  (The index is reported as EMPTY — that is honest.)
 
-# 7. Your first search (a fresh install has an empty index)
+# 6. Your first search (a fresh install has an empty index)
 gseer search 'port==443'
 #   → The index is empty — no assets have been ingested yet.
 
-# 8. (Optional) load the labeled SYNTHETIC evaluation corpus so you can
+# 7. (Optional) load the labeled SYNTHETIC evaluation corpus so you can
 #    try search/export/facets without collecting anything
 gseer setup --load-fixtures          # asks for a y/yes confirmation
 gseer search 'port==443 && title CONTAINS "login"'
 #   Every surface labels this data: SYNTHETIC EVALUATION DATA.
+
+# 8. Register a source and run it — explicit, one command each
+#    (docs/SOURCES.md holds the terms verdicts)
+gseer source add my-dns --type dns --seed-mode config \
+    --seeds example.net,example.org --enable --yes
+gseer collect run --source my-dns
+gseer search 'domain IN_DOMAIN "example.net"'
 
 # 9. Start the dashboard + API (runs the privilege audit first, in the foreground)
 gseer server start
@@ -182,22 +240,25 @@ gseer export 'port == 443' --format ndjson --out -   # stdout; stats go to stder
 ## CLI Command Reference
 
 Run `gseer --help` for the live list; `gseer <command> --help` documents
-every flag. Verified against v0.2.0:
+every flag.  Profile support per command — **P** = personal mode
+(SQLite), **S** = self-hosted (PostgreSQL), **C** = client (remote
+server).  Verified against v0.2.1:
 
 | Command | Purpose |
 | --- | --- |
-| `gseer search <query>` | Search the index with GQL (`--facets`, `--mode`, `--limit`, `--sort`, `--explain`, `--validate`, `-o json`) |
-| `gseer host <ip\|hostname\|domain>` | Read-only host inspection: asset + services + latest HTTP/TLS/fingerprints + provenance (`-o json`) |
-| `gseer export <query>` | Stream results as JSON / CSV / NDJSON (`--format`, `--out`, `--max`) |
-| `gseer setup` | Configure client mode, or `--self-hosted` to run the hardened deployment order (`--with-compose [--full]`, `--load-fixtures`, `--purge-fixtures`, `--reset-runtime-password`) |
-| `gseer doctor` | Diagnose config / DB / schema / index / privilege-audit health (read-only) |
-| `gseer server start\|status\|stop` | Manage the local API + dashboard (start runs the fail-closed privilege audit before binding) |
-| `gseer source add\|list\|enable\|disable` | Register and manage passive data sources |
-| `gseer collect run\|status\|redrive` | Run collectors; inspect jobs; re-drive dead letters |
-| `gseer suppress add\|list\|remove` | Manage the suppression policy |
-| `gseer rules list\|validate` | Fingerprint rules (list; lint + false-positive tests) |
+| `gseer search <query>` (P S C) | Search the index with GQL (`--facets`, `--mode`, `--limit`, `--sort`, `--explain`, `--validate`, `-o json`) |
+| `gseer host <ip\|hostname\|domain>` (S) | Read-only host inspection: asset + services + latest HTTP/TLS/fingerprints + provenance (`-o json`) |
+| `gseer export <query>` (P S) | Stream results as JSON / CSV / NDJSON (`--format`, `--out`, `--max`) |
+| `gseer setup` (P S) | `--personal` initializes the single-file personal mode; `--self-hosted` runs the hardened deployment order (`--with-compose [--full]`, `--load-fixtures`, `--purge-fixtures`, `--reset-runtime-password`) |
+| `gseer doctor` (P S C) | Diagnose config / DB / schema / index / privilege-audit health (read-only; personal mode checks the SQLite file, migration state, and index) |
+| `gseer server start\|status\|stop` (S) | Manage the local API + dashboard (start runs the fail-closed privilege audit before binding) |
+| `gseer source add\|list\|enable\|disable` (S) | Register and manage passive data sources |
+| `gseer collect run\|status\|redrive` (S) | Run collectors; inspect jobs; re-drive dead letters |
+| `gseer suppress add\|list\|remove` (P S) | Manage the suppression policy |
+| `gseer rules list\|validate` (S) | Fingerprint rules (list; lint + false-positive tests) |
 | `gseer update --check\|--apply` | Verify / apply signed updates |
-| `gseer db migrate status\|diagnose\|force` | Inspect and recover schema migrations |
+| `gseer db migrate status\|diagnose\|force` (S) | Inspect and recover schema migrations |
+| `gseer db backup\|restore` (P) | Consistent personal-mode snapshot (VACUUM INTO) and atomic restore; self-hosted backups use `pg_dump` (`docs/DEPLOYMENT.md`) |
 | `gseer version` | Version, commit, build info |
 | `gseer completion bash\|zsh\|fish\|powershell` | Shell completion |
 
@@ -242,7 +303,10 @@ curl -H "Authorization: Bearer $GSEER_TOKEN" 'http://127.0.0.1:8443/api/v1/searc
 **Nothing collects uninvoked.** You register a source, enable it, and
 run it — one explicit command each. Targets are identifiers you named
 or assets already in your index; there are no third-party target lists
-and no enumeration.
+and no enumeration. Collection requires the **self-hosted** profile
+(the registry that tracks sources, jobs, checkpoints, and dead letters
+is PostgreSQL-only; on a personal install the commands refuse with
+`E_PROFILE_UNSUPPORTED`).
 
 ```bash
 # Register a passive DNS source (targets = domains you choose)
@@ -309,6 +373,7 @@ random database password — never commit a real `.env`.
 | Symptom | What it means / what to do |
 | --- | --- |
 | `E_CONFIG_REQUIRED: client.endpoint …` right after `setup --self-hosted` | Setup provisioned the database; your shell is still in the `client` profile. Export the handoff: `export GSEER_PROFILE=self-hosted`, `export GSEER_DB_DSN="$(grep '^GSEER_DSN=' .env | cut -d= -f2-)"` and the runtime DSN from setup (Quickstart step 4–5). |
+| `E_PROFILE_UNSUPPORTED` on `source`/`collect`/`host` (personal install) | Those commands need the self-hosted profile: the collection registry and the host report are PostgreSQL-only. For evaluation data run `gseer setup --load-fixtures` (personal); for real collection deploy Path B (`gseer setup --self-hosted --with-compose`). |
 | `API_E_UNAUTHORIZED` (client search, exit 5) | The server requires a Bearer token and the CLI client cannot present one — query with `curl -H "Authorization: Bearer $GSEER_TOKEN" …`, or from inside the compose network. |
 | `E_RUNTIME_CREDENTIAL_REQUIRED` on `server start` (exit 3) | No runtime credential configured. `gseer setup --self-hosted` provisions `gseer_app` and prints `GSEER_DB_RUNTIME_DSN` once — export it. |
 | `E_RUNTIME_CREDENTIAL_MISMATCH` (exit 5) | `database.runtime_dsn` connects as something other than `gseer_app` (e.g. the operator credential). Point it at the gseer_app credential — the server never serves traffic under another identity. |

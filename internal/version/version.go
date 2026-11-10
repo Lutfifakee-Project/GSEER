@@ -17,15 +17,23 @@
 // Package version exposes build-time metadata injected via -ldflags.
 //
 // The variables Version, Commit, and BuiltAt are normally set by the
-// Makefile (or CI) using linker flags; their zero values are appropriate
-// for `go run` and `go test` only.  GSEER never claims a version it
-// cannot substantiate (SPEC-03 §4: checksums, not signatures, in v0.0.1;
-// `gseer doctor` prints the running binary's SHA-256).
+// Makefile (or CI) using linker flags.  When they are not injected —
+// most notably for `go install ...@vX.Y.Z` binaries, which cannot run
+// ldflags — Current() falls back to the Go toolchain's own build
+// information (debug.ReadBuildInfo): the module version, the VCS
+// revision, and the VCS commit time.  That fallback is still honest: it
+// only ever reports metadata the toolchain itself recorded, and it
+// keeps the plain "dev"/"unknown" values when the binary carries no
+// such evidence (a plain `go build`/`go run` inside a module reports
+// "(devel)", which stays "dev").  GSEER never claims a version it
+// cannot substantiate (SPEC-03 §4: checksums, not signatures, in
+// v0.0.1; `gseer doctor` prints the running binary's SHA-256).
 package version
 
 import (
 	"fmt"
 	"runtime"
+	"runtime/debug"
 	"strings"
 )
 
@@ -34,15 +42,24 @@ import (
 // a version (AC-8.x documentation honesty; the honesty floor).
 var (
 	// Version is the semantic version string, e.g. "v0.0.1".  When built
-	// without ldflags it is "dev" — `gseer doctor` reports this honestly.
+	// without ldflags it is "dev" — Current() then tries the module
+	// version recorded by the toolchain (set for `go install ...@vX.Y.Z`)
+	// and reports "dev" only when that yields nothing.
 	Version = "dev"
 	// Commit is the VCS commit hash the binary was built from.  Empty
-	// when built without ldflags (e.g. `go run`); reported as "unknown".
+	// when built without ldflags; Current() falls back to the toolchain's
+	// vcs.revision stamp (full hash — unambiguous next to a release page)
+	// and otherwise reports "unknown".
 	Commit = ""
 	// BuiltAt is the build timestamp in RFC3339 form.  Empty when built
-	// without ldflags; reported as "unknown".
+	// without ldflags; Current() falls back to the toolchain's vcs.time
+	// stamp (also RFC3339) and otherwise reports "unknown".
 	BuiltAt = ""
 )
+
+// readBuildInfo is a seam for tests: production points at
+// debug.ReadBuildInfo, which is environment-bound.
+var readBuildInfo = debug.ReadBuildInfo
 
 // Info is the structured form of the build metadata.  The CLI's `version`
 // command renders this; future surfaces (doctor, /api/v1/version) reuse it.
@@ -54,14 +71,56 @@ type Info struct {
 }
 
 // Current returns the build metadata for the running binary.  Go runtime
-// version is always available; the other fields reflect ldflags injection.
+// version is always available; the other fields reflect ldflags injection
+// with the toolchain's build information as the honest fallback (see the
+// package comment).
 func Current() Info {
-	return Info{
+	info := Info{
 		Version:   Version,
 		Commit:    orUnknown(Commit),
 		BuiltAt:   orUnknown(BuiltAt),
 		GoVersion: runtime.Version(),
 	}
+	if bi, ok := readBuildInfo(); ok {
+		info = applyBuildInfo(info, bi)
+	}
+	return info
+}
+
+// applyBuildInfo fills the un-injected fields from the toolchain's build
+// information.  Pure so tests can pin every branch: an injected value is
+// NEVER overwritten, "(devel)" never becomes a version, and only the
+// toolchain's own vcs.* stamps are trusted.
+func applyBuildInfo(info Info, bi *debug.BuildInfo) Info {
+	if bi == nil {
+		return info
+	}
+	if info.Version == "dev" {
+		if v := strings.TrimSpace(bi.Main.Version); isRealModuleVersion(v) {
+			info.Version = v
+		}
+	}
+	for _, s := range bi.Settings {
+		val := strings.TrimSpace(s.Value)
+		if val == "" {
+			continue
+		}
+		switch {
+		case info.Commit == "unknown" && s.Key == "vcs.revision":
+			info.Commit = val
+		case info.BuiltAt == "unknown" && s.Key == "vcs.time":
+			info.BuiltAt = val // the toolchain stamps RFC3339 — the BuiltAt contract
+		}
+	}
+	return info
+}
+
+// isRealModuleVersion reports whether v is a substantiated module
+// version: a plain `go build`/`go test` reports "(devel)", an empty
+// string means nothing was recorded, and only "v…" strings are release
+// versions (the go command's canonical form).
+func isRealModuleVersion(v string) bool {
+	return v != "" && v != "(devel)" && strings.HasPrefix(v, "v")
 }
 
 // String renders the version block as a human-readable multi-line string.

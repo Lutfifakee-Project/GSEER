@@ -472,8 +472,12 @@ func runtimeDSNFromOperator(operatorDSN, user, password string) (string, error) 
 
 // runSetupLoadFixtures loads the embedded fixture corpus behind the
 // QS-6 gate: consent FIRST (before any database contact), then the
-// shared provisioning core (idempotent at head), then the store ingest
-// and the honesty banner + counts report.
+// store ingest and the honesty banner + counts report.  The action is
+// profile-aware: the self-hosted path runs the shared provisioning core
+// (idempotent at head) and the PostgreSQL store; the personal path
+// opens the configured SQLite file (created by `gseer setup --personal`)
+// and ingests through the personal store — same corpus, same gate,
+// same honesty banner.
 func runSetupLoadFixtures(cmd *cobra.Command, cfg *config.Config, dbURL string) error {
 	out := cmd.OutOrStdout()
 	ctx := commandContext(cmd)
@@ -483,6 +487,10 @@ func runSetupLoadFixtures(cmd *cobra.Command, cfg *config.Config, dbURL string) 
 		"7 observations / 6 services / 4 assets (SPEC-04 §9) tagged provenance=fixture",
 		"Re-running is idempotent (delivery-identity dedup); the data is NOT real internet data."); err != nil {
 		return err
+	}
+
+	if cfg.Profile == config.ProfilePersonal {
+		return runPersonalLoadFixtures(cmd, cfg)
 	}
 
 	dsn := setupFixturesDSN(cfg, dbURL)
@@ -511,11 +519,46 @@ func runSetupLoadFixtures(cmd *cobra.Command, cfg *config.Config, dbURL string) 
 	return nil
 }
 
+// runPersonalLoadFixtures is the personal-mode body of
+// runSetupLoadFixtures: it opens the configured database FILE (never a
+// postgres:// DSN), migrates idempotently (setup is a provisioning
+// command), and ingests the same corpus through the personal store.
+// The closing hints name only personal-surface commands — personal mode
+// has no API server (`gseer server start` requires the self-hosted
+// profile).
+func runPersonalLoadFixtures(cmd *cobra.Command, cfg *config.Config) error {
+	out := cmd.OutOrStdout()
+	ctx := commandContext(cmd)
+
+	store, res, err := personalStore(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("E_SETUP_DB: cannot open the personal database: %w\n"+
+			"Try: gseer setup --personal  (provisions the database file)", err)
+	}
+	defer func() { _ = res.DB.Close() }()
+
+	stats, err := fixture.Load(ctx, store)
+	if err != nil {
+		return err
+	}
+
+	printf(out, "[ ok  ] personal database: %s\n", res.Path)
+	printf(out, "[ ok  ] fixture source registered (data_sources id=%d, connector=fixture, enabled=false)\n", stats.SourceID)
+	printf(out, "[ ok  ] fixtures loaded: %d assets inserted, %d updated; %d services inserted, %d updated; %d observations inserted, %d deduped\n",
+		stats.AssetsInserted, stats.AssetsUpdated,
+		stats.ServicesInserted, stats.ServicesUpdated,
+		stats.ObservationsInserted, stats.ObservationsDeduped)
+	printf(out, "\n%s\n", fixture.Banner)
+	printf(out, "Query them with: gseer search 'port=443'   — every surface labels this data as synthetic.\nPurge with: gseer setup --purge-fixtures\n")
+	return nil
+}
+
 // runSetupPurgeFixtures removes every fixture-tagged row behind the
 // QS-6 gate.  The purge is scoped by construction (store-side
-// PurgeFixtureData binds to the fixture source id AND provenance), but
-// the gate still asks: deletion is deletion, and the operator should
-// never be surprised by either direction of the fixture lifecycle.
+// purge binds to provenance='fixture' — and, on PostgreSQL, the fixture
+// source id), but the gate still asks: deletion is deletion, and the
+// operator should never be surprised by either direction of the fixture
+// lifecycle.  Profile-aware like the load path.
 func runSetupPurgeFixtures(cmd *cobra.Command, cfg *config.Config, dbURL string) error {
 	out := cmd.OutOrStdout()
 	ctx := commandContext(cmd)
@@ -526,6 +569,10 @@ func runSetupPurgeFixtures(cmd *cobra.Command, cfg *config.Config, dbURL string)
 			"plus services/assets left fully unreferenced after that deletion",
 		"Rows from real sources are unreachable by the purge predicates and are never deleted."); err != nil {
 		return err
+	}
+
+	if cfg.Profile == config.ProfilePersonal {
+		return runPersonalPurgeFixtures(cmd, cfg)
 	}
 
 	dsn := setupFixturesDSN(cfg, dbURL)
@@ -551,6 +598,34 @@ func runSetupPurgeFixtures(cmd *cobra.Command, cfg *config.Config, dbURL string)
 	}
 	printf(out, "[ ok  ] fixtures purged: %d observations, %d services, %d assets removed (one transaction)\n",
 		stats.Observations, stats.Services, stats.Assets)
+	printf(out, "\n%s\n", fixture.Banner)
+	printf(out, "The fixture registry row remains (configuration, not data); re-load any time with `gseer setup --load-fixtures`.\n")
+	return nil
+}
+
+// runPersonalPurgeFixtures is the personal-mode body of
+// runSetupPurgeFixtures: the SQLite purge is scoped by provenance
+// ('fixture') inside one transaction; rows from real sources are
+// unreachable by the predicates.  The fixture registry row stays
+// (configuration, not data), exactly like the PostgreSQL purge.
+func runPersonalPurgeFixtures(cmd *cobra.Command, cfg *config.Config) error {
+	out := cmd.OutOrStdout()
+	ctx := commandContext(cmd)
+
+	store, res, err := personalStore(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("E_SETUP_DB: cannot open the personal database: %w\n"+
+			"Try: gseer setup --personal  (provisions the database file)", err)
+	}
+	defer func() { _ = res.DB.Close() }()
+
+	stats, err := store.PurgeFixtures(ctx)
+	if err != nil {
+		return err
+	}
+
+	printf(out, "[ ok  ] fixtures purged: %d observations, %d services, %d assets removed (one transaction)\n",
+		stats.ObservationsRemoved, stats.ServicesRemoved, stats.AssetsRemoved)
 	printf(out, "\n%s\n", fixture.Banner)
 	printf(out, "The fixture registry row remains (configuration, not data); re-load any time with `gseer setup --load-fixtures`.\n")
 	return nil

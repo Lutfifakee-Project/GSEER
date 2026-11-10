@@ -141,9 +141,21 @@ func writeExportFooter(w io.Writer, enc *json.Encoder, cw *csv.Writer, format st
 	return fmt.Errorf("E_EXPORT_FORMAT: unsupported format %q", format)
 }
 
+// Searcher is the minimal query surface the exporter pages through:
+// one method, the shared search contract.  *search.Service (PostgreSQL)
+// and *searchlite.Service (personal SQLite) both satisfy it.
+type Searcher interface {
+	Search(ctx context.Context, q search.Query) (*search.Result, error)
+}
+
 // Stream writes the export to w and returns the stats.  Rows are
 // flushed per page — the caller's writer decides the buffering.
-func Stream(ctx context.Context, svc *search.Service, req Request, w io.Writer) (Stats, error) {
+// svc is the minimal query surface the exporter needs; both the
+// PostgreSQL service (*search.Service) and the personal-mode service
+// (*searchlite.Service) satisfy it, because the search.Result/Row
+// contract is shared (searchlite/service.go) — the stream stays
+// backend-agnostic.
+func Stream(ctx context.Context, svc Searcher, req Request, w io.Writer) (Stats, error) {
 	start := time.Now()
 	if !knownFormat(req.Format) {
 		return Stats{}, fmt.Errorf("E_EXPORT_FORMAT: unsupported format %q (supported: %s)",

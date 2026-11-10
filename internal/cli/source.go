@@ -129,7 +129,12 @@ func newSourceEnableCmd(enable bool) *cobra.Command {
 	}
 }
 
-// openSourceStore loads config and opens the registry store.
+// openSourceStore loads config and opens the registry store.  The
+// registry (data_sources, jobs, checkpoints, dead letters) exists only
+// in the self-hosted PostgreSQL schema, so the gate is explicit and
+// profile-aware: personal mode gets an honest E_PROFILE_UNSUPPORTED
+// (NOT a misleading PostgreSQL parse error), and the client profile —
+// which holds no local data at all — is named as such.
 func openSourceStore(cmd *cobra.Command) (*pgxpool.Pool, *config.Config, error) {
 	cfg, cerr := config.Load(config.Flags{
 		ConfigPath: flags.configPath,
@@ -138,6 +143,19 @@ func openSourceStore(cmd *cobra.Command) (*pgxpool.Pool, *config.Config, error) 
 	})
 	if cerr != nil {
 		return nil, nil, fmt.Errorf("E_CONFIG: %s\nTry: gseer setup --help", cerr.Error())
+	}
+	switch cfg.Profile {
+	case config.ProfilePersonal:
+		return nil, nil, fmt.Errorf("E_PROFILE_UNSUPPORTED: `source` and `collect` need the collection registry, " +
+			"which personal mode (SQLite) does not have\n" +
+			"Why: the personal store is a single-file search index (assets, services, observations, suppression) — " +
+			"no data_sources registry, jobs, checkpoints, or dead letters\n" +
+			"Try: evaluation data without collecting: gseer setup --load-fixtures — " +
+			"or the full stack: gseer setup --self-hosted --with-compose (docs/QUICKSTART.md)")
+	case config.ProfileClient:
+		return nil, nil, fmt.Errorf("E_CLIENT_ONLY: `source` and `collect` run against the LOCAL registry (self-hosted profile)\n" +
+			"Why: the client profile holds no data; it only queries a remote server\n" +
+			"Try: gseer setup --self-hosted --with-compose, or --profile self-hosted")
 	}
 	pool, err := openAppPool(cmd, cfg)
 	if err != nil {
