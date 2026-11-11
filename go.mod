@@ -1,4 +1,4 @@
-module github.com/Lutfifakee-Project/GSEER
+module github.com/Lutfifakee-Project/gseer
 
 go 1.26.0
 

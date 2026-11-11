@@ -46,9 +46,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/fprule"
-	"github.com/Lutfifakee-Project/GSEER/internal/storage"
-	"github.com/Lutfifakee-Project/GSEER/internal/suppress"
+	"github.com/Lutfifakee-Project/gseer/internal/fprule"
+	"github.com/Lutfifakee-Project/gseer/internal/storage"
+	"github.com/Lutfifakee-Project/gseer/internal/suppress"
 )
 
 // Type aliases — identical to the postgres package's, so callers' code

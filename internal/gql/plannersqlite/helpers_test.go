@@ -22,8 +22,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/planner"
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/validator"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/planner"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/validator"
 )
 
 func mustEncode(t *testing.T, c planner.CursorPayload) string {

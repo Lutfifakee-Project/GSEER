@@ -24,9 +24,9 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/parser"
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/planner"
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/validator"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/parser"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/planner"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/validator"
 )
 
 // facets.go — the v0.1.0 faceted-search engine (owner directive §3).

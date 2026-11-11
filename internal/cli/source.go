@@ -29,7 +29,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/collect"
+	"github.com/Lutfifakee-Project/gseer/internal/collect"
 )
 
 // registerSourceCmd attaches `gseer source` with list/add/enable/disable.

@@ -48,8 +48,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/ast"
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/planner"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/ast"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/planner"
 )
 
 // Compile lowers a validated AST to a parameterized SQLite Plan.

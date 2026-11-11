@@ -34,8 +34,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/storage"
-	"github.com/Lutfifakee-Project/GSEER/internal/suppress"
+	"github.com/Lutfifakee-Project/gseer/internal/storage"
+	"github.com/Lutfifakee-Project/gseer/internal/suppress"
 )
 
 // supTestDB migrates a fresh per-test database to head and opens a store

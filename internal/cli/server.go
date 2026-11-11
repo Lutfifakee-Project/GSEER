@@ -34,12 +34,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/api"
-	"github.com/Lutfifakee-Project/GSEER/internal/config"
-	"github.com/Lutfifakee-Project/GSEER/internal/dashboard"
-	"github.com/Lutfifakee-Project/GSEER/internal/httpx"
-	"github.com/Lutfifakee-Project/GSEER/internal/search"
-	"github.com/Lutfifakee-Project/GSEER/internal/storage/postgres"
+	"github.com/Lutfifakee-Project/gseer/internal/api"
+	"github.com/Lutfifakee-Project/gseer/internal/config"
+	"github.com/Lutfifakee-Project/gseer/internal/dashboard"
+	"github.com/Lutfifakee-Project/gseer/internal/httpx"
+	"github.com/Lutfifakee-Project/gseer/internal/search"
+	"github.com/Lutfifakee-Project/gseer/internal/storage/postgres"
 )
 
 // server.go — `gseer server start | status | stop` (SPEC-03 §2).

@@ -27,7 +27,7 @@
 # `gseer version` reports substantiated values rather than "dev".  An
 # un-injected binary (e.g. `go run`) honestly reports "dev"/"unknown".
 
-MODULE   := github.com/Lutfifakee-Project/GSEER
+MODULE   := github.com/Lutfifakee-Project/gseer
 BIN      := gseer
 GOFLAGS  := -trimpath
 # LDFLAGS is RECURSIVELY expanded (=) so that $(VERSION)/$(COMMIT)/$(BUILT_AT)

@@ -25,8 +25,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/fprule"
-	"github.com/Lutfifakee-Project/GSEER/internal/storage"
+	"github.com/Lutfifakee-Project/gseer/internal/fprule"
+	"github.com/Lutfifakee-Project/gseer/internal/storage"
 )
 
 // fingerprint_integration_test.go — the M18 ingestion-enrichment

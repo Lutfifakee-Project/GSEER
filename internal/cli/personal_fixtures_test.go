@@ -41,11 +41,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/config"
-	"github.com/Lutfifakee-Project/GSEER/internal/fixture"
-	"github.com/Lutfifakee-Project/GSEER/internal/search"
-	"github.com/Lutfifakee-Project/GSEER/internal/searchlite"
-	"github.com/Lutfifakee-Project/GSEER/internal/storage/sqlite"
+	"github.com/Lutfifakee-Project/gseer/internal/config"
+	"github.com/Lutfifakee-Project/gseer/internal/fixture"
+	"github.com/Lutfifakee-Project/gseer/internal/search"
+	"github.com/Lutfifakee-Project/gseer/internal/searchlite"
+	"github.com/Lutfifakee-Project/gseer/internal/storage/sqlite"
 )
 
 // writePersonalConfigForTest writes the minimal personal config the

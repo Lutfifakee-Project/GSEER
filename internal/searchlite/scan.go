@@ -31,7 +31,7 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/search"
+	"github.com/Lutfifakee-Project/gseer/internal/search"
 )
 
 // parseTS parses the storage timestamp format (fixed-width UTC micro

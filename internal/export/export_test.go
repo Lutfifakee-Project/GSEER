@@ -27,7 +27,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/search"
+	"github.com/Lutfifakee-Project/gseer/internal/search"
 )
 
 // export_test.go — unit coverage for the format layer (escaping,

@@ -38,7 +38,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/update"
+	"github.com/Lutfifakee-Project/gseer/internal/update"
 )
 
 func fatal(format string, args ...any) {

@@ -75,7 +75,7 @@ Quick start:
   gseer search 'port==443 && title CONTAINS "login"'
 Coming later (not in this release — see docs/ROADMAP.md):
   scan (authorized observation), asset
-License: GNU AGPL-3.0 — https://github.com/Lutfifakee-Project/GSEER`,
+License: GNU AGPL-3.0 — https://github.com/Lutfifakee-Project/gseer`,
 	// Disable the cobra completion subcommand's auto-help banner; we
 	// register `completion` ourselves with the exact short description.
 	CompletionOptions: cobra.CompletionOptions{

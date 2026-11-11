@@ -23,7 +23,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/version"
+	"github.com/Lutfifakee-Project/gseer/internal/version"
 	"github.com/spf13/cobra"
 )
 

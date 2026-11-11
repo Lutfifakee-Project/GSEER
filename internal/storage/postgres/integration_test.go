@@ -44,8 +44,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/storage"
-	"github.com/Lutfifakee-Project/GSEER/internal/storage/migrations"
+	"github.com/Lutfifakee-Project/gseer/internal/storage"
+	"github.com/Lutfifakee-Project/gseer/internal/storage/migrations"
 )
 
 const defaultAdminDSN = "postgres://gseer@127.0.0.1:5433/postgres?sslmode=disable"

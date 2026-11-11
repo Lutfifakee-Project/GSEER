@@ -25,8 +25,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/storage"
-	"github.com/Lutfifakee-Project/GSEER/internal/storage/postgres"
+	"github.com/Lutfifakee-Project/gseer/internal/storage"
+	"github.com/Lutfifakee-Project/gseer/internal/storage/postgres"
 )
 
 // facets_integration_test.go — the v0.1.0 facet engine on the fixture

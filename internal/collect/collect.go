@@ -22,8 +22,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/storage"
-	"github.com/Lutfifakee-Project/GSEER/internal/suppress"
+	"github.com/Lutfifakee-Project/gseer/internal/storage"
+	"github.com/Lutfifakee-Project/gseer/internal/suppress"
 )
 
 // NOTE: storage.Fact is defined in internal/storage (v0.0.2 M14 moved it

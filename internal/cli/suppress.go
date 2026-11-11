@@ -50,9 +50,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/config"
-	"github.com/Lutfifakee-Project/GSEER/internal/storage/postgres"
-	"github.com/Lutfifakee-Project/GSEER/internal/suppress"
+	"github.com/Lutfifakee-Project/gseer/internal/config"
+	"github.com/Lutfifakee-Project/gseer/internal/storage/postgres"
+	"github.com/Lutfifakee-Project/gseer/internal/suppress"
 )
 
 // registerSuppressCmd attaches `gseer suppress` with add/list/remove.

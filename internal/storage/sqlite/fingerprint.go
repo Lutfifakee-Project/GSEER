@@ -36,7 +36,7 @@ package sqlite
 //   - no technology hit ever creates a service, port, or protocol.
 
 import (
-	"github.com/Lutfifakee-Project/GSEER/internal/fprule"
+	"github.com/Lutfifakee-Project/gseer/internal/fprule"
 )
 
 func enrichEvidence(engine *fprule.Registry, evidence map[string]any) map[string]any {

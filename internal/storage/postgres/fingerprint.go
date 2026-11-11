@@ -17,7 +17,7 @@
 package postgres
 
 import (
-	"github.com/Lutfifakee-Project/GSEER/internal/fprule"
+	"github.com/Lutfifakee-Project/gseer/internal/fprule"
 )
 
 // fingerprint.go — v0.1.0 evidence enrichment at ingestion.

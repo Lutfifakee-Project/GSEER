@@ -24,7 +24,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/ast"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/ast"
 )
 
 // planner.go — the M9 GQL → PostgreSQL compiler (SPEC-04 §6, §8).

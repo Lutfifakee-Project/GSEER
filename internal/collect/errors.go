@@ -16,7 +16,7 @@
 
 package collect
 
-import "github.com/Lutfifakee-Project/GSEER/internal/storage"
+import "github.com/Lutfifakee-Project/gseer/internal/storage"
 
 // Fact aliases the storage-level ingest unit so connector code and the
 // runner read naturally ([]storage.Fact IS []Fact — identical alias).

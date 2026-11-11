@@ -30,8 +30,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/httpx"
-	"github.com/Lutfifakee-Project/GSEER/internal/search"
+	"github.com/Lutfifakee-Project/gseer/internal/httpx"
+	"github.com/Lutfifakee-Project/gseer/internal/search"
 )
 
 // Dashboard serves the web UI over the shared SearchService.

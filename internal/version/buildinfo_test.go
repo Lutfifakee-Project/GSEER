@@ -30,7 +30,7 @@ import (
 func TestApplyBuildInfoGoInstall(t *testing.T) {
 	info := Info{Version: "dev", Commit: "unknown", BuiltAt: "unknown", GoVersion: "go1.26.0"}
 	bi := &debug.BuildInfo{
-		Main: debug.Module{Path: "github.com/Lutfifakee-Project/GSEER", Version: "v0.2.1"},
+		Main: debug.Module{Path: "github.com/Lutfifakee-Project/gseer", Version: "v0.2.1"},
 		Settings: []debug.BuildSetting{
 			{Key: "vcs.revision", Value: "ab55a38965f3088365e3aec3638065a10b4a9bd9"},
 			{Key: "vcs.time", Value: "2026-11-08T10:00:00Z"},
@@ -57,7 +57,7 @@ func TestApplyBuildInfoGoInstall(t *testing.T) {
 func TestApplyBuildInfoDevelStaysDev(t *testing.T) {
 	info := Info{Version: "dev", Commit: "unknown", BuiltAt: "unknown", GoVersion: "go1.26.0"}
 	bi := &debug.BuildInfo{
-		Main: debug.Module{Path: "github.com/Lutfifakee-Project/GSEER", Version: "(devel)"},
+		Main: debug.Module{Path: "github.com/Lutfifakee-Project/gseer", Version: "(devel)"},
 	}
 
 	got := applyBuildInfo(info, bi)
@@ -76,7 +76,7 @@ func TestApplyBuildInfoDevelStaysDev(t *testing.T) {
 func TestApplyBuildInfoInjectedWins(t *testing.T) {
 	info := Info{Version: "v0.2.1", Commit: "cafe123", BuiltAt: "2026-11-09T00:00:00Z", GoVersion: "go1.26.0"}
 	bi := &debug.BuildInfo{
-		Main: debug.Module{Path: "github.com/Lutfifakee-Project/GSEER", Version: "v0.0.1"},
+		Main: debug.Module{Path: "github.com/Lutfifakee-Project/gseer", Version: "v0.0.1"},
 		Settings: []debug.BuildSetting{
 			{Key: "vcs.revision", Value: "deadbeef"},
 			{Key: "vcs.time", Value: "1999-01-01T00:00:00Z"},
@@ -110,7 +110,7 @@ func TestCurrentWiresBuildInfoSeam(t *testing.T) {
 	old := readBuildInfo
 	readBuildInfo = func() (*debug.BuildInfo, bool) {
 		return &debug.BuildInfo{
-			Main: debug.Module{Path: "github.com/Lutfifakee-Project/GSEER", Version: "v9.8.7"},
+			Main: debug.Module{Path: "github.com/Lutfifakee-Project/gseer", Version: "v9.8.7"},
 		}, true
 	}
 	t.Cleanup(func() { readBuildInfo = old })

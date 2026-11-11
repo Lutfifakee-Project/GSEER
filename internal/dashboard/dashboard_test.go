@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/search"
+	"github.com/Lutfifakee-Project/gseer/internal/search"
 )
 
 // dashboard_test.go — the M16 security review regression pins for the

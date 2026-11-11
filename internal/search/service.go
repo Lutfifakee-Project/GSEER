@@ -27,9 +27,9 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/parser"
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/planner"
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/validator"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/parser"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/planner"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/validator"
 )
 
 // service.go — the M10 SearchService (SPEC-04: validate → plan → execute

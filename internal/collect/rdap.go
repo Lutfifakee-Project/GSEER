@@ -44,7 +44,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/suppress"
+	"github.com/Lutfifakee-Project/gseer/internal/suppress"
 )
 
 // Default RDAP bootstrap endpoints (IANA).  Vars, not consts, only so

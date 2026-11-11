@@ -42,7 +42,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/suppress"
+	"github.com/Lutfifakee-Project/gseer/internal/suppress"
 )
 
 // Default crt.sh endpoint (overridden in tests).

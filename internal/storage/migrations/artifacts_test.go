@@ -36,7 +36,7 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/Lutfifakee-Project/GSEER/deploy"
+	"github.com/Lutfifakee-Project/gseer/deploy"
 )
 
 // pinnedArtifacts maps embedded file name → registered SHA-256.

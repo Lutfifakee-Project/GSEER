@@ -22,8 +22,8 @@ package validator
 import (
 	"testing"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/ast"
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/parser"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/ast"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/parser"
 )
 
 // mustParse parses q without validating (the validator under test).

@@ -29,7 +29,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/storage"
+	"github.com/Lutfifakee-Project/gseer/internal/storage"
 )
 
 // DataSourceRow is the registry row — the storage-package canonical type

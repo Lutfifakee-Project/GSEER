@@ -22,7 +22,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/storage/postgres"
+	"github.com/Lutfifakee-Project/gseer/internal/storage/postgres"
 )
 
 // redrive_integration_test.go — the v0.1.0 dead-letter re-drive on PG:

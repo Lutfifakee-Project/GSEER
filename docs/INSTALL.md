@@ -26,7 +26,7 @@ Note on `version` output: `go install` builds carry no VCS metadata, so
 | OS | Linux / macOS / Windows (the CI matrix builds and tests all three) |
 
 ```bash
-git clone https://github.com/Lutfifakee-Project/GSEER.git
+git clone https://github.com/Lutfifakee-Project/gseer.git
 cd GSEER
 make build VERSION=v0.2.0   # ./bin/gseer (version stamped via ldflags)
 make tools                  # install golangci-lint + govulncheck

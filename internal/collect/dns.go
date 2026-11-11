@@ -52,7 +52,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/suppress"
+	"github.com/Lutfifakee-Project/gseer/internal/suppress"
 )
 
 // dnsConnector records DNS answers about operator-named names.

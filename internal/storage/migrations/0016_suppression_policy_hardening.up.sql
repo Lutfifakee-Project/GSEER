@@ -5,7 +5,7 @@
 -- Source of authority: GSEER v0.2.0 — Migration Artifact & Privilege
 -- Consistency Correction Revision 6.7.2, §2 (complete up migration) and
 -- §4/§5/§8 (grant, audit and adoption contracts).  Baseline:
--- Lutfifakee-Project/GSEER @ d84b291583bf2f0ec8d3499faa62031239e2681b
+-- Lutfifakee-Project/gseer @ d84b291583bf2f0ec8d3499faa62031239e2681b
 -- (v0.1.0, migrations 0001–0006).
 --
 -- Objects created (each numbered requirement of Rev 6.7.2 §2):

@@ -47,8 +47,8 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/fixture"
-	"github.com/Lutfifakee-Project/GSEER/internal/storage/postgres"
+	"github.com/Lutfifakee-Project/gseer/internal/fixture"
+	"github.com/Lutfifakee-Project/gseer/internal/storage/postgres"
 )
 
 const sIntAdminDSN = "postgres://gseer@127.0.0.1:5433/postgres?sslmode=disable"

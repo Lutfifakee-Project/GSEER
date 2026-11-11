@@ -45,7 +45,7 @@ installations upgrade in place.
 - **`go install` support (REL-01).** The module-root main package is a
   pure delegate to `cmd/gseer`, covered by entrypoint-equivalence
   tests, so both install paths work:
-  `go install github.com/Lutfifakee-Project/GSEER/cmd/gseer@v0.2.1` or
+  `go install github.com/Lutfifakee-Project/gseer/cmd/gseer@v0.2.1` or
   `make build VERSION=v0.2.1`.
 - **Documentation and hygiene.** Engine references outside
   `docs/SOURCES.md` are neutral (brand policy); `.gitignore` gains a
@@ -85,14 +85,14 @@ installations upgrade in place.
 
 ```bash
 # From source (Go 1.26+)
-git clone https://github.com/Lutfifakee-Project/GSEER.git
+git clone https://github.com/Lutfifakee-Project/gseer.git
 cd GSEER
 make build VERSION=v0.2.1
 ./bin/gseer version        # → gseer v0.2.1 (<commit>)
 ./bin/gseer doctor         # prints the binary's SHA-256
 
 # Or without cloning
-go install github.com/Lutfifakee-Project/GSEER/cmd/gseer@v0.2.1
+go install github.com/Lutfifakee-Project/gseer/cmd/gseer@v0.2.1
 ```
 
 Self-hosted server path: `gseer setup --self-hosted --with-compose`

@@ -30,8 +30,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/storage/postgres"
-	"github.com/Lutfifakee-Project/GSEER/internal/suppress"
+	"github.com/Lutfifakee-Project/gseer/internal/storage/postgres"
+	"github.com/Lutfifakee-Project/gseer/internal/suppress"
 )
 
 // integration_test.go — the Runner against a real PostgreSQL: source

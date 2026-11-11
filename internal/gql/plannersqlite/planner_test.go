@@ -25,9 +25,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/parser"
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/planner"
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/validator"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/parser"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/planner"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/validator"
 )
 
 // compile parses, validates and compiles q, returning the plan.

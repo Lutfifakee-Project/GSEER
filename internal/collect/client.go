@@ -56,7 +56,7 @@ const (
 	DefaultRPS          = 1.0
 	DefaultTimeout      = 15 * time.Second
 	DefaultMaxBodyBytes = 8 << 20 // 8 MiB — no provider answer is that big
-	DefaultUserAgent    = "GSEER/0.0.2 (passive connector; https://github.com/Lutfifakee-Project/GSEER)"
+	DefaultUserAgent    = "GSEER/0.0.2 (passive connector; https://github.com/Lutfifakee-Project/gseer)"
 )
 
 // NewClient builds a Client.

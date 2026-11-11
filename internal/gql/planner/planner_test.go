@@ -21,9 +21,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/ast"
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/parser"
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/validator"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/ast"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/parser"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/validator"
 )
 
 // planner_test.go — unit tests for the M9 planner.

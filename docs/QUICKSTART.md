@@ -61,7 +61,7 @@ index and searches exactly what you collect into it.
 ## 1. Build
 
 ```bash
-git clone https://github.com/Lutfifakee-Project/GSEER.git
+git clone https://github.com/Lutfifakee-Project/gseer.git
 cd GSEER
 make build VERSION=v0.2.0
 ./bin/gseer version

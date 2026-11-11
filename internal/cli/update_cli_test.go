@@ -27,7 +27,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/update"
+	"github.com/Lutfifakee-Project/gseer/internal/update"
 )
 
 // update_cli_test.go — the `gseer update` command surface: usage

@@ -20,7 +20,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/lexer"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/lexer"
 )
 
 // ast_test.go — the M8 acceptance tests: canonical String() rendering,

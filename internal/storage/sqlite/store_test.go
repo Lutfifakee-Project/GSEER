@@ -29,8 +29,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/storage"
-	"github.com/Lutfifakee-Project/GSEER/internal/suppress"
+	"github.com/Lutfifakee-Project/gseer/internal/storage"
+	"github.com/Lutfifakee-Project/gseer/internal/suppress"
 )
 
 // openTestStore opens a migrated personal store in a fresh temp dir.

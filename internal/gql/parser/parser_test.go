@@ -22,7 +22,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/ast"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/ast"
 )
 
 // parser_test.go — the M6 acceptance tests: precedence, sugar, `!=` as

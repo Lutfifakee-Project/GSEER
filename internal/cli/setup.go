@@ -29,9 +29,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/config"
-	"github.com/Lutfifakee-Project/GSEER/internal/fixture"
-	"github.com/Lutfifakee-Project/GSEER/internal/storage/postgres"
+	"github.com/Lutfifakee-Project/gseer/internal/config"
+	"github.com/Lutfifakee-Project/gseer/internal/fixture"
+	"github.com/Lutfifakee-Project/gseer/internal/storage/postgres"
 )
 
 // setup.go — `gseer setup` (SPEC-03 §2; QS-1–QS-3, QS-6).

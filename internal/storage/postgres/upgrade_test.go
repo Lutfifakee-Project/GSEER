@@ -38,8 +38,8 @@ import (
 	migrate "github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/storage/migrations"
-	"github.com/Lutfifakee-Project/GSEER/internal/suppress"
+	"github.com/Lutfifakee-Project/gseer/internal/storage/migrations"
+	"github.com/Lutfifakee-Project/gseer/internal/suppress"
 )
 
 // v010OnlyFS filters the embedded migration set to the six v0.1.0 files

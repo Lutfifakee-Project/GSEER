@@ -48,7 +48,7 @@ import (
 	"net"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/suppress"
+	"github.com/Lutfifakee-Project/gseer/internal/suppress"
 )
 
 // ptrConnector records reverse-DNS answers about operator-named addresses.

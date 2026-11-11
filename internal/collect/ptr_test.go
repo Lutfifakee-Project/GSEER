@@ -29,7 +29,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/suppress"
+	"github.com/Lutfifakee-Project/gseer/internal/suppress"
 )
 
 func TestPTRConnectorCollect(t *testing.T) {

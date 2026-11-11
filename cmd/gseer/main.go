@@ -23,7 +23,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/cli"
+	"github.com/Lutfifakee-Project/gseer/internal/cli"
 )
 
 func main() {

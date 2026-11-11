@@ -43,10 +43,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/fixture"
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/parser"
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/validator"
-	"github.com/Lutfifakee-Project/GSEER/internal/storage/postgres"
+	"github.com/Lutfifakee-Project/gseer/internal/fixture"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/parser"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/validator"
+	"github.com/Lutfifakee-Project/gseer/internal/storage/postgres"
 )
 
 const pIntAdminDSN = "postgres://gseer@127.0.0.1:5433/postgres?sslmode=disable"

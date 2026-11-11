@@ -35,7 +35,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Lutfifakee-Project/GSEER/deploy"
+	"github.com/Lutfifakee-Project/gseer/deploy"
 )
 
 func TestPinnedArtifactsAreLFOnAllPlatforms(t *testing.T) {

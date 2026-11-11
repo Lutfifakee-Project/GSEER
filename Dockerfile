@@ -23,7 +23,7 @@ COPY . .
 ARG VERSION=dev
 ARG COMMIT=unknown
 RUN CGO_ENABLED=0 go build -trimpath \
-      -ldflags "-X github.com/Lutfifakee-Project/GSEER/internal/version.Version=${VERSION} -X github.com/Lutfifakee-Project/GSEER/internal/version.Commit=${COMMIT}" \
+      -ldflags "-X github.com/Lutfifakee-Project/gseer/internal/version.Version=${VERSION} -X github.com/Lutfifakee-Project/gseer/internal/version.Commit=${COMMIT}" \
       -o /out/gseer ./cmd/gseer
 
 # --- runtime stage ---------------------------------------------------------

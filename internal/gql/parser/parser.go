@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/ast"
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/lexer"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/ast"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/lexer"
 )
 
 // parser.go — the recursive-descent GQL parser (SPEC-04 §3 EBNF).

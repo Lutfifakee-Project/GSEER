@@ -17,7 +17,7 @@
 // Package main exists for exactly ONE reason (REL-01): the Go module
 // root is the package path resolved by the short-form install command
 //
-//	go install github.com/Lutfifakee-Project/GSEER@latest
+//	go install github.com/Lutfifakee-Project/gseer@latest
 //
 // and `go install` requires a main package at the module root.  Without
 // this file that command fails with "does not contain package" and the
@@ -36,7 +36,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/cli"
+	"github.com/Lutfifakee-Project/gseer/internal/cli"
 )
 
 func main() {

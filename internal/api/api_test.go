@@ -33,7 +33,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/search"
+	"github.com/Lutfifakee-Project/gseer/internal/search"
 )
 
 // testServer builds an API server whose search service has a nil pool —

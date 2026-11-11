@@ -32,7 +32,7 @@ package collect
 import (
 	"context"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/storage"
+	"github.com/Lutfifakee-Project/gseer/internal/storage"
 )
 
 // Backend is the collection bookkeeping + ingestion contract the Runner

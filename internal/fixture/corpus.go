@@ -26,8 +26,8 @@ import (
 	"hash/fnv"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/storage"
-	"github.com/Lutfifakee-Project/GSEER/internal/storage/postgres"
+	"github.com/Lutfifakee-Project/gseer/internal/storage"
+	"github.com/Lutfifakee-Project/gseer/internal/storage/postgres"
 )
 
 // corpus.go — the M4 fixture corpus loader (SPEC-04 §9): the embedded

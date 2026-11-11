@@ -44,7 +44,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/ast"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/ast"
 )
 
 // FieldType classifies a registry field for strict typing.

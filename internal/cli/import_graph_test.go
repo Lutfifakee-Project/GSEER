@@ -75,7 +75,7 @@ func TestImportGraphSearchNotScan(t *testing.T) {
 	}
 
 	forbiddenSubstrings := []string{
-		"github.com/Lutfifakee-Project/GSEER/internal/collector/",
+		"github.com/Lutfifakee-Project/gseer/internal/collector/",
 	}
 	// Additional in-module path fragments that would indicate a collector
 	// sub-package was added outside the gated framework.  We match on the
@@ -89,7 +89,7 @@ func TestImportGraphSearchNotScan(t *testing.T) {
 		"/collector/audit",
 		"/collector/egress",
 	} {
-		forbiddenSubstrings = append(forbiddenSubstrings, "github.com/Lutfifakee-Project/GSEER"+frag)
+		forbiddenSubstrings = append(forbiddenSubstrings, "github.com/Lutfifakee-Project/gseer"+frag)
 	}
 
 	violations := []string{}

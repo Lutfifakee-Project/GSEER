@@ -28,7 +28,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/collect"
+	"github.com/Lutfifakee-Project/gseer/internal/collect"
 )
 
 func registerCollectCmd(root *cobra.Command) {

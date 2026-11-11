@@ -71,9 +71,9 @@ builds:
       - -buildvcs=false
     ldflags:
       - -s -w
-        -X github.com/Lutfifakee-Project/GSEER/internal/version.Version={{ .Version }}
-        -X github.com/Lutfifakee-Project/GSEER/internal/version.Commit={{ .FullCommit }}
-        -X github.com/Lutfifakee-Project/GSEER/internal/version.BuiltAt={{ .Date }}
+        -X github.com/Lutfifakee-Project/gseer/internal/version.Version={{ .Version }}
+        -X github.com/Lutfifakee-Project/gseer/internal/version.Commit={{ .FullCommit }}
+        -X github.com/Lutfifakee-Project/gseer/internal/version.BuiltAt={{ .Date }}
     mod_timestamp: "{{ .CommitTimestamp }}"
 
 archives:

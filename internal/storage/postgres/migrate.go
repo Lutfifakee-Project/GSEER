@@ -28,7 +28,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/storage/migrations"
+	"github.com/Lutfifakee-Project/gseer/internal/storage/migrations"
 )
 
 // migrate.go — the migration runner (M3).

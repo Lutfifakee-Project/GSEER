@@ -49,7 +49,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/Lutfifakee-Project/GSEER/deploy"
+	"github.com/Lutfifakee-Project/gseer/deploy"
 )
 
 // Hardened role names (pinned by the artifacts; not configurable).

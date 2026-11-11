@@ -21,8 +21,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/ast"
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/parser"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/ast"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/parser"
 )
 
 // validator_test.go — the M7 acceptance tests: alias rewrite, strict

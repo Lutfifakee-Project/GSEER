@@ -32,7 +32,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/storage"
+	"github.com/Lutfifakee-Project/gseer/internal/storage"
 )
 
 // CollectionJob is one connector run row.

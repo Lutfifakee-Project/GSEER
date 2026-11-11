@@ -24,7 +24,7 @@ import (
 	"hash/fnv"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/storage"
+	"github.com/Lutfifakee-Project/gseer/internal/storage"
 )
 
 // runner.go — the execution engine around connectors: source registry

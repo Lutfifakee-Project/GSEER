@@ -29,10 +29,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/search"
-	"github.com/Lutfifakee-Project/GSEER/internal/searchlite"
-	"github.com/Lutfifakee-Project/GSEER/internal/storage"
-	sqlstore "github.com/Lutfifakee-Project/GSEER/internal/storage/sqlite"
+	"github.com/Lutfifakee-Project/gseer/internal/search"
+	"github.com/Lutfifakee-Project/gseer/internal/searchlite"
+	"github.com/Lutfifakee-Project/gseer/internal/storage"
+	sqlstore "github.com/Lutfifakee-Project/gseer/internal/storage/sqlite"
 )
 
 var obsSeq atomicCounter

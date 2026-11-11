@@ -29,7 +29,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/storage"
+	"github.com/Lutfifakee-Project/gseer/internal/storage"
 )
 
 // TestBuildDSNExoticPaths (SQ-03) — a path containing spaces, Unicode,

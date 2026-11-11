@@ -31,10 +31,10 @@ import (
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/export"
-	"github.com/Lutfifakee-Project/GSEER/internal/httpx"
-	"github.com/Lutfifakee-Project/GSEER/internal/search"
-	"github.com/Lutfifakee-Project/GSEER/internal/version"
+	"github.com/Lutfifakee-Project/gseer/internal/export"
+	"github.com/Lutfifakee-Project/gseer/internal/httpx"
+	"github.com/Lutfifakee-Project/gseer/internal/search"
+	"github.com/Lutfifakee-Project/gseer/internal/version"
 )
 
 // server.go — the REST API surface (SPEC-07): /api/v1 routes over the

@@ -23,7 +23,7 @@ import (
 	"hash/fnv"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/storage"
+	"github.com/Lutfifakee-Project/gseer/internal/storage"
 )
 
 // redrive.go — v0.1.0 dead-letter re-drive (roadmap: "dead-letter

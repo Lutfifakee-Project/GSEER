@@ -30,11 +30,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/parser"
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/planner"
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/plannersqlite"
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/validator"
-	"github.com/Lutfifakee-Project/GSEER/internal/search"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/parser"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/planner"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/plannersqlite"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/validator"
+	"github.com/Lutfifakee-Project/gseer/internal/search"
 )
 
 // Service executes GQL searches against the personal search_index view.

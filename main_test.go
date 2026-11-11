@@ -15,7 +15,7 @@
 // along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 // REL-01 regression: the module root gained a second main package so
-// `go install github.com/Lutfifakee-Project/GSEER@latest` works.  The
+// `go install github.com/Lutfifakee-Project/gseer@latest` works.  The
 // independent audit asked whether that introduces ambiguous or
 // duplicated entry-point behavior.  These tests answer it with the
 // actual binaries: both entry points are compiled from this module and

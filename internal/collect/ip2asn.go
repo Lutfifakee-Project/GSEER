@@ -45,7 +45,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/suppress"
+	"github.com/Lutfifakee-Project/gseer/internal/suppress"
 )
 
 // Team Cymru DNS interface bases (docs/SOURCES.md §D; overridable in

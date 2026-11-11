@@ -23,9 +23,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/config"
-	"github.com/Lutfifakee-Project/GSEER/internal/update"
-	"github.com/Lutfifakee-Project/GSEER/internal/version"
+	"github.com/Lutfifakee-Project/gseer/internal/config"
+	"github.com/Lutfifakee-Project/gseer/internal/update"
+	"github.com/Lutfifakee-Project/gseer/internal/version"
 )
 
 // update.go — `gseer update` (v0.1.0, owner directive §5): the signed

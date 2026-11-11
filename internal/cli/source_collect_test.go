@@ -21,7 +21,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/collect"
+	"github.com/Lutfifakee-Project/gseer/internal/collect"
 )
 
 // source_collect_test.go — the v0.0.2 `source` / `collect` commands:
