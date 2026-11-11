@@ -34,12 +34,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/collect"
-	"github.com/Lutfifakee-Project/GSEER/internal/config"
-	"github.com/Lutfifakee-Project/GSEER/internal/fprule"
-	"github.com/Lutfifakee-Project/GSEER/internal/storage"
-	"github.com/Lutfifakee-Project/GSEER/internal/storage/postgres"
-	"github.com/Lutfifakee-Project/GSEER/internal/storage/sqlite"
+	"github.com/Lutfifakee-Project/gseer/internal/collect"
+	"github.com/Lutfifakee-Project/gseer/internal/config"
+	"github.com/Lutfifakee-Project/gseer/internal/fprule"
+	"github.com/Lutfifakee-Project/gseer/internal/storage"
+	"github.com/Lutfifakee-Project/gseer/internal/storage/postgres"
+	"github.com/Lutfifakee-Project/gseer/internal/storage/sqlite"
 )
 
 // Compile-time proof that BOTH engines satisfy the full registry
@@ -61,13 +61,9 @@ type fingerprintSetter interface {
 // selects.  The returned closer releases the engine's resources and is
 // always non-nil when err == nil.
 func openRegistryStore(cmd *cobra.Command) (collect.RegistryBackend, func(), *config.Config, error) {
-	cfg, cerr := config.Load(config.Flags{
-		ConfigPath: flags.configPath,
-		Profile:    flags.profile,
-		Endpoint:   flags.server,
-	})
+	cfg, cerr := engineConfigOrInit(cmd)
 	if cerr != nil {
-		return nil, nil, nil, fmt.Errorf("E_CONFIG: %s\nTry: gseer setup --help", cerr.Error())
+		return nil, nil, nil, fmt.Errorf("%s\nTry: gseer setup --help", cerr.Error())
 	}
 	switch cfg.Profile {
 	case config.ProfilePersonal:

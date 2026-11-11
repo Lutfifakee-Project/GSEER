@@ -41,7 +41,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/config"
+	"github.com/Lutfifakee-Project/gseer/internal/config"
 )
 
 // registerHostCmd attaches `gseer host`.
@@ -124,18 +124,14 @@ func runHost(cmd *cobra.Command, args []string) error {
 	out := cmd.OutOrStdout()
 	identifier := strings.TrimSpace(args[0])
 
-	cfg, cerr := config.Load(config.Flags{
-		ConfigPath: flags.configPath,
-		Profile:    flags.profile,
-		Endpoint:   flags.server,
-	})
+	cfg, cerr := engineConfigOrInit(cmd)
 	if cerr != nil {
-		printf(out, "E_CONFIG: %s\nTry: gseer setup --help\n", cerr.Error())
+		printf(out, "%s\nTry: gseer setup --help\n", cerr.Error())
 		exitWith(ExitConfig)
 	}
 	if cfg.Profile == config.ProfilePersonal {
 		printf(out, "E_PROFILE_UNSUPPORTED: `gseer host` is not wired for personal mode yet\n"+
-			"Why: the host report runs through the PostgreSQL service; personal mode (SQLite) covers search, export, suppression, and backup in v0.2.x\n"+
+			"Why: the host report runs through the PostgreSQL service; personal mode (SQLite) covers search, export, suppression, backup, and collection\n"+
 			"Try: gseer search '%s'   (the same identifiers are searchable in personal mode)\n", identifier)
 		exitWith(ExitConfig)
 		return nil

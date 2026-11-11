@@ -35,25 +35,22 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/config"
-	"github.com/Lutfifakee-Project/GSEER/internal/fixture"
-	"github.com/Lutfifakee-Project/GSEER/internal/search"
-	"github.com/Lutfifakee-Project/GSEER/internal/searchlite"
-	"github.com/Lutfifakee-Project/GSEER/internal/storage/sqlite"
-	"github.com/Lutfifakee-Project/GSEER/internal/suppress"
+	"github.com/Lutfifakee-Project/gseer/internal/config"
+	"github.com/Lutfifakee-Project/gseer/internal/fixture"
+	"github.com/Lutfifakee-Project/gseer/internal/search"
+	"github.com/Lutfifakee-Project/gseer/internal/searchlite"
+	"github.com/Lutfifakee-Project/gseer/internal/storage/sqlite"
+	"github.com/Lutfifakee-Project/gseer/internal/suppress"
 )
 
 // loadEngineConfig loads the config accepting the two engine profiles
-// (self-hosted PostgreSQL and personal SQLite).  The client profile has
-// no local engine and is rejected here.
+// (self-hosted PostgreSQL and personal SQLite), with the zero-config
+// first run applied (engineConfigOrInit).  The client profile has no
+// local engine and is rejected here.
 func loadEngineConfig() (*config.Config, error) {
-	cfg, cerr := config.Load(config.Flags{
-		ConfigPath: flags.configPath,
-		Profile:    flags.profile,
-		Endpoint:   flags.server,
-	})
-	if cerr != nil {
-		return nil, cerr
+	cfg, err := engineConfigOrInit(nil)
+	if err != nil {
+		return nil, err
 	}
 	switch cfg.Profile {
 	case config.ProfileSelfHosted, config.ProfilePersonal:

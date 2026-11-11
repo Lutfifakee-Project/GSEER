@@ -28,12 +28,12 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/config"
-	"github.com/Lutfifakee-Project/GSEER/internal/search"
-	"github.com/Lutfifakee-Project/GSEER/internal/searchlite"
-	"github.com/Lutfifakee-Project/GSEER/internal/storage/postgres"
-	"github.com/Lutfifakee-Project/GSEER/internal/storage/sqlite"
-	"github.com/Lutfifakee-Project/GSEER/internal/version"
+	"github.com/Lutfifakee-Project/gseer/internal/config"
+	"github.com/Lutfifakee-Project/gseer/internal/search"
+	"github.com/Lutfifakee-Project/gseer/internal/searchlite"
+	"github.com/Lutfifakee-Project/gseer/internal/storage/postgres"
+	"github.com/Lutfifakee-Project/gseer/internal/storage/sqlite"
+	"github.com/Lutfifakee-Project/gseer/internal/version"
 )
 
 // doctor.go — `gseer doctor` (SPEC-03 §2; QS-4).
@@ -105,6 +105,22 @@ filled index (QS-4 normative).  Doctor is read-only: it never migrates.`,
 						printf(out, "        %s\n", strings.ReplaceAll(err.Error(), "\n", "\n        "))
 					}
 				}
+			}
+
+			// Zero-configuration first run: with no configuration anywhere
+			// (and no explicit override), a missing config is not a fault —
+			// the first engine command initializes personal mode.  Doctor
+			// stays read-only: it reports the state, it never provisions.
+			if cerr != nil && zeroConfigFirstRunApplies() {
+				report("config validity", "PASS",
+					"none yet — zero-config first run: the first engine command (gseer, search, source, collect) initializes personal mode automatically", "", nil)
+				info := version.Current()
+				report("binary", "PASS", fmt.Sprintf("version %s, commit %s, built %s, %s/%s, sha256=%s",
+					info.Version, orUnknown(info.Commit), orUnknown(info.BuiltAt),
+					runtime.GOOS, runtime.GOARCH, binarySHA256()), "", nil)
+				report("database + index", "SKIP", "nothing initialized yet — run gseer (or any engine command) once, then re-run doctor", "gseer", nil)
+				printf(out, "\n%d PASS, %d FAIL.\n", pass, fail)
+				return nil
 			}
 
 			if cerr != nil {

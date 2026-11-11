@@ -32,9 +32,9 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/spf13/cobra"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/config"
-	"github.com/Lutfifakee-Project/GSEER/internal/gql/planner"
-	"github.com/Lutfifakee-Project/GSEER/internal/search"
+	"github.com/Lutfifakee-Project/gseer/internal/config"
+	"github.com/Lutfifakee-Project/gseer/internal/gql/planner"
+	"github.com/Lutfifakee-Project/gseer/internal/search"
 )
 
 // search.go — `gseer search <query>` (SPEC-03 §2/§3), the M10/M11
@@ -201,17 +201,9 @@ func runSearch(cmd *cobra.Command, args []string, sf searchFlags) error {
 		WithStats: true,
 	}
 
-	cfg, cerr := config.Load(config.Flags{
-		ConfigPath: flags.configPath,
-		Profile:    flags.profile,
-		Endpoint:   flags.server,
-	})
-	if cerr != nil {
-		printf(out, "E_CONFIG: %s\nTry: gseer setup --help\n", cerr.Error())
-		exitWith(ExitConfig)
-	}
-
-	// --validate / --explain: compile only, no database contact.
+	// --validate / --explain: compile only, no database contact and no
+	// configuration required (a fresh install can validate a query
+	// before anything is initialized).
 	if sf.Validate || sf.Explain {
 		svc := search.New(nil)
 		plan, err := svc.Plan(q)
@@ -225,6 +217,12 @@ func runSearch(cmd *cobra.Command, args []string, sf searchFlags) error {
 		}
 		printf(out, "%s\n", plan.Explain())
 		return nil
+	}
+
+	cfg, cerr := engineConfigOrInit(cmd)
+	if cerr != nil {
+		printf(out, "%s\nTry: gseer setup --help\n", cerr.Error())
+		exitWith(ExitConfig)
 	}
 
 	switch cfg.Profile {

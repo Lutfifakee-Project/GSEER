@@ -35,13 +35,80 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/config"
-	"github.com/Lutfifakee-Project/GSEER/internal/version"
+	"github.com/Lutfifakee-Project/gseer/internal/config"
+	"github.com/Lutfifakee-Project/gseer/internal/version"
 )
+
+// zeroConfigFirstRunApplies reports whether this invocation is in the
+// "no configuration anywhere" state the zero-configuration first run
+// covers: no --config/GSEER_CONFIG path override, no explicit profile
+// or endpoint selection (--profile, GSEER_PROFILE, --server,
+// GSEER_CLIENT_ENDPOINT), no platform-default config file, and no
+// GSEER_HOME state directory.  An explicit operator choice is never
+// silently overridden — those paths keep their honest E_CONFIG errors.
+func zeroConfigFirstRunApplies() bool {
+	if flags.configPath != "" || flags.profile != "" || flags.server != "" {
+		return false
+	}
+	for _, k := range []string{"GSEER_CONFIG", "GSEER_PROFILE", "GSEER_CLIENT_ENDPOINT", "GSEER_HOME"} {
+		if v, ok := os.LookupEnv(k); ok && v != "" {
+			return false
+		}
+	}
+	// The exact file config.Load resolves as the platform default
+	// (UserHomeDir/.gseer/config.yaml — mirrors loader.go).
+	home, err := os.UserHomeDir()
+	if err == nil && home != "" {
+		if _, serr := os.Stat(filepath.Join(home, ".gseer", "config.yaml")); serr == nil {
+			return false
+		}
+	}
+	return true
+}
+
+// engineConfigOrInit loads the configuration for engine commands with
+// the zero-configuration first run applied: when nothing is configured
+// anywhere, the standard personal-mode initialization runs first — the
+// SAME runSetupPersonal path bare `gseer` uses (same permissions, same
+// migrations, same config writer; no second init code path to drift) —
+// and the freshly written config is loaded.  Engine commands therefore
+// behave identically however the user orders their first steps:
+// `gseer`, `gseer search …`, or `gseer source add …` all end in a
+// working personal engine.
+func engineConfigOrInit(cmd *cobra.Command) (*config.Config, error) {
+	if cmd == nil {
+		// Callers without a command context (package-level config
+		// helpers) still get a working notice writer + background
+		// context through an empty cobra Command.
+		cmd = &cobra.Command{}
+	}
+	if zeroConfigFirstRunApplies() {
+		out := cmd.OutOrStdout()
+		if !flags.quiet {
+			printf(out, "First GSEER run — initializing PERSONAL MODE (one local SQLite file; no database server, no Docker).\n\n")
+		}
+		if err := runSetupPersonal(cmd, "", false); err != nil {
+			return nil, err
+		}
+		if !flags.quiet {
+			printf(out, "\n")
+		}
+	}
+	cfg, cerr := config.Load(config.Flags{
+		ConfigPath: flags.configPath,
+		Profile:    flags.profile,
+		Endpoint:   flags.server,
+	})
+	if cerr != nil {
+		return nil, fmt.Errorf("E_CONFIG: %s", cerr.Error())
+	}
+	return cfg, nil
+}
 
 // runFirstRun implements the bare `gseer` invocation.
 func runFirstRun(cmd *cobra.Command) error {

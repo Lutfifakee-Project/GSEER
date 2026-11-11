@@ -24,10 +24,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/Lutfifakee-Project/GSEER/internal/config"
-	"github.com/Lutfifakee-Project/GSEER/internal/export"
-	"github.com/Lutfifakee-Project/GSEER/internal/search"
-	"github.com/Lutfifakee-Project/GSEER/internal/searchlite"
+	"github.com/Lutfifakee-Project/gseer/internal/config"
+	"github.com/Lutfifakee-Project/gseer/internal/export"
+	"github.com/Lutfifakee-Project/gseer/internal/search"
+	"github.com/Lutfifakee-Project/gseer/internal/searchlite"
 )
 
 // export.go — `gseer export` (v0.1.0, owner directive §4): stream a GQL
@@ -83,13 +83,9 @@ func runExport(cmd *cobra.Command, args []string) error {
 	fTimeout, _ := cmd.Flags().GetDuration("timeout")
 	fForce, _ := cmd.Flags().GetBool("force")
 
-	cfg, cerr := config.Load(config.Flags{
-		ConfigPath: flags.configPath,
-		Profile:    flags.profile,
-		Endpoint:   flags.server,
-	})
+	cfg, cerr := engineConfigOrInit(cmd)
 	if cerr != nil {
-		printf(out, "E_CONFIG: %s\nTry: gseer setup --help\n", cerr.Error())
+		printf(out, "%s\nTry: gseer setup --help\n", cerr.Error())
 		exitWith(ExitConfig)
 	}
 	if cfg.Profile == config.ProfileClient {
