@@ -141,6 +141,7 @@ func TestDNSConnectorRecordsMXAndNS(t *testing.T) {
 		t.Fatalf("Collect: %v", err)
 	}
 	types := map[string]string{}
+	prefs := map[string]uint16{}
 	for _, r := range b.Raws {
 		if r.AssetKind != "hostname" {
 			continue
@@ -148,6 +149,12 @@ func TestDNSConnectorRecordsMXAndNS(t *testing.T) {
 		dnsMap, _ := r.Extra["dns"].(map[string]any)
 		rt, _ := dnsMap["type"].(string)
 		types[r.Value] = rt
+		if q, _ := dnsMap["query"].(string); q != "example.com" {
+			t.Errorf("hostname fact must carry the canonical query name, got %q", q)
+		}
+		if pref, ok := dnsMap["pref"].(uint16); ok {
+			prefs[r.Value] = pref
+		}
 	}
 	for want, wantType := range map[string]string{
 		"mail1.example.com": "MX",
@@ -160,6 +167,9 @@ func TestDNSConnectorRecordsMXAndNS(t *testing.T) {
 	}
 	if _, dup := types["mail1.example.com."]; dup {
 		t.Error("MX target kept its trailing dot (not normalized)")
+	}
+	if prefs["mail1.example.com"] != 10 {
+		t.Errorf("MX preference not carried in the evidence: %+v", prefs)
 	}
 	// Notes count ANSWERS as delivered (mx:2 for the duplicate target);
 	// the pipeline collapses them into one fact via intra-batch + L1/L2 dedup.
@@ -192,6 +202,56 @@ func TestDNSConnectorMXFailureIsBestEffort(t *testing.T) {
 	}
 	if len(b.Raws) != 1 {
 		t.Errorf("expected only the A-record fact, got %d records", len(b.Raws))
+	}
+}
+
+// TestDNSConnectorInvalidSeedIsDeadLetteredNotCounted pins the invalid
+// seed contract: a seed that fails normalization is dead-lettered as a
+// domain fact for the pipeline to audit — it never reaches the
+// resolver, never counts as a lookup, and therefore never contributes
+// to the all-lookups-failed retry denominator (the valid seeds alone
+// decide retryability).
+func TestDNSConnectorInvalidSeedIsDeadLetteredNotCounted(t *testing.T) {
+	calls := 0
+	withSeams(t,
+		func() ([]net.IPAddr, error) {
+			calls++
+			return nil, &net.DNSError{Err: "i/o timeout", IsTimeout: true}
+		},
+		func() (string, error) { return "", &net.DNSError{Err: "no such host", IsNotFound: true} },
+		func(string) ([]string, error) { return nil, errors.New("not used") })
+
+	_, err := dnsConnector{}.Collect(ctxFor(SourceConfig{
+		SeedMode: "config", Seeds: []string{"", "nx.example"}}))
+	if err == nil || !stringsContains(err.Error(), "all 1 lookups failed") {
+		t.Fatalf("the single valid seed alone decides retryability, got %v", err)
+	}
+	if calls != 1 {
+		t.Errorf("the invalid seed must never reach the resolver (got %d calls)", calls)
+	}
+}
+
+// TestDNSConnectorSkipsSelfReferentialCNAME pins the self-reference
+// guard: a CNAME answer naming the queried apex itself (the trailing
+// root-dot form the resolver actually returns) is not a fact about
+// another asset and must not become a hostname record.
+func TestDNSConnectorSkipsSelfReferentialCNAME(t *testing.T) {
+	withSeams(t,
+		func() ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.IPv4(203, 0, 113, 7).To4()}}, nil
+		},
+		func() (string, error) { return "example.com.", nil },
+		func(string) ([]string, error) { return nil, errors.New("not used") })
+
+	b, err := dnsConnector{}.Collect(ctxFor(SourceConfig{SeedMode: "config", Seeds: []string{"example.com"}}))
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if len(b.Raws) != 1 || b.Raws[0].AssetKind != "ip" {
+		t.Fatalf("self-referential CNAME must produce no hostname fact, got %+v", b.Raws)
+	}
+	if b.Notes["answers"] != 1 {
+		t.Errorf("answers counter wrong: %+v", b.Notes)
 	}
 }
 

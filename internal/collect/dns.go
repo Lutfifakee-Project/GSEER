@@ -71,6 +71,9 @@ func (dnsConnector) Review() Review {
 }
 
 // Collect implements Collector: one point-lookup pass over the seeds.
+// Each valid seed fans out into four focused record-type collectors
+// (A/AAAA, CNAME, MX, NS) sharing one pass accumulator; the helpers live
+// below Collect and keep this loop the whole story of a pass.
 func (dnsConnector) Collect(ctx Ctx) (*Batch, error) {
 	names, err := seeds(ctx, "domain")
 	if err != nil {
@@ -78,120 +81,161 @@ func (dnsConnector) Collect(ctx Ctx) (*Batch, error) {
 	}
 	r := dnsResolver(ctx.Config.Resolver)
 	now := time.Now().UTC()
-	raws := make([]RawFact, 0, len(names))
-	lookups, answers := 0, 0
-	mxAnswers, nsAnswers := 0, 0
-	var lookupErrs []error
+	pass := newDNSPass(len(names))
 	for _, name := range names {
 		if err := ctx.Context.Err(); err != nil {
 			return nil, err
 		}
 		canonical, nerr := suppress.NormalizeDomain(name)
 		if nerr != nil {
-			raws = append(raws, RawFact{AssetKind: "domain", Value: name, ObservedAt: now})
+			pass.raws = append(pass.raws, RawFact{AssetKind: "domain", Value: name, ObservedAt: now})
 			// the pipeline dead-letters the invalid seed with its reason
 			continue
 		}
-		lookups++
+		pass.lookups++
+		pass.collectAddrs(ctx.Context, r, canonical, now)
+		pass.collectCNAME(ctx.Context, r, canonical, now)
+		pass.collectMX(ctx.Context, r, canonical, now)
+		pass.collectNS(ctx.Context, r, canonical, now)
+	}
+	return pass.batch(ctx.Config.Resolver, len(names))
+}
 
-		addrs, aerr := lookupIPAddr(ctx.Context, r, canonical)
-		if aerr == nil {
-			for _, a := range addrs {
-				ip := a.IP.String()
-				answers++
-				raws = append(raws, RawFact{
-					AssetKind:  "ip",
-					Value:      ip,
-					ObservedAt: now,
-					Confidence: "medium", // recursive answers may be cached
-					Extra: map[string]any{
-						"dns": map[string]any{"query": canonical, "type": addrFamily(a.IP)},
-					},
-				})
-			}
-		} else {
-			lookupErrs = append(lookupErrs, aerr)
-		}
+// dnsPass accumulates one connector pass: the collected facts, the
+// honest answer counters that become the job Notes, and the
+// address-lookup errors that drive the total-failure sentinel.
+type dnsPass struct {
+	raws    []RawFact
+	lookups int // valid seeds that reached the resolver
+	answers int // record answers kept as facts (all types)
+	mx, ns  int // per-type answer counters (Notes truthfulness)
+	errs    []error
+}
 
-		target, cerr := lookupCNAME(ctx.Context, r, canonical)
-		if cerr == nil && target != "" && target != canonical && target != canonical+"." {
-			if cn, nerr := suppress.NormalizeDomain(target); nerr == nil && cn != canonical {
-				answers++
-				raws = append(raws, RawFact{
-					AssetKind:  "hostname",
-					Value:      cn,
-					ObservedAt: now,
-					Confidence: "medium",
-					Extra: map[string]any{
-						"dns": map[string]any{"query": canonical, "type": "CNAME"},
-					},
-				})
-			}
-		}
-		// MX answers name the domain's published mail exchangers — the
-		// same publication-fact character as a CNAME target.  Best-effort
-		// like the CNAME probe: an MX lookup failure on a seed whose A
-		// lookup succeeded is ordinary DNS (an apex without MX is normal),
-		// not a transport outage; the answer counters keep the all-failed
-		// retry semantics truthful.
-		mxs, mxerr := lookupMX(ctx.Context, r, canonical)
-		if mxerr == nil {
-			for _, mx := range mxs {
-				if mx == nil || mx.Host == "" {
-					continue
-				}
-				if hn, herr := suppress.NormalizeDomain(mx.Host); herr == nil && hn != "" && hn != canonical {
-					answers++
-					mxAnswers++
-					raws = append(raws, RawFact{
-						AssetKind:  "hostname",
-						Value:      hn,
-						ObservedAt: now,
-						Confidence: "medium",
-						Extra: map[string]any{
-							"dns": map[string]any{"query": canonical, "type": "MX", "pref": mx.Pref},
-						},
-					})
-				}
-			}
-		}
+func newDNSPass(n int) *dnsPass {
+	return &dnsPass{raws: make([]RawFact, 0, n)}
+}
 
-		// NS answers name the domain's published nameservers (same basis,
-		// same best-effort treatment).
-		nss, nserr := lookupNS(ctx.Context, r, canonical)
-		if nserr == nil {
-			for _, ns := range nss {
-				if ns == nil || ns.Host == "" {
-					continue
-				}
-				if hn, herr := suppress.NormalizeDomain(ns.Host); herr == nil && hn != "" && hn != canonical {
-					answers++
-					nsAnswers++
-					raws = append(raws, RawFact{
-						AssetKind:  "hostname",
-						Value:      hn,
-						ObservedAt: now,
-						Confidence: "medium",
-						Extra: map[string]any{
-							"dns": map[string]any{"query": canonical, "type": "NS"},
-						},
-					})
-				}
-			}
+// collectAddrs records the A/AAAA answers as ip asset facts (recursive
+// answers may be cached, hence medium confidence).  A failed address
+// lookup is remembered: when EVERY seed's address lookup fails, the
+// transport is down and the whole pass is retryable.
+func (p *dnsPass) collectAddrs(ctx context.Context, r *net.Resolver, canonical string, now time.Time) {
+	addrs, err := lookupIPAddr(ctx, r, canonical)
+	if err != nil {
+		p.errs = append(p.errs, err)
+		return
+	}
+	for _, a := range addrs {
+		p.answers++
+		p.raws = append(p.raws, RawFact{
+			AssetKind:  "ip",
+			Value:      a.IP.String(),
+			ObservedAt: now,
+			Confidence: "medium", // recursive answers may be cached
+			Extra: map[string]any{
+				"dns": map[string]any{"query": canonical, "type": addrFamily(a.IP)},
+			},
+		})
+	}
+}
+
+// collectCNAME records the CNAME target as a hostname asset fact (the
+// same publication-fact character as the address answers).
+// Self-referential answers — the queried name itself, with or without
+// the trailing root dot — name no other asset and are skipped.
+func (p *dnsPass) collectCNAME(ctx context.Context, r *net.Resolver, canonical string, now time.Time) {
+	target, err := lookupCNAME(ctx, r, canonical)
+	if err != nil || target == "" || target == canonical || target == canonical+"." {
+		return
+	}
+	cn, nerr := suppress.NormalizeDomain(target)
+	if nerr != nil || cn == canonical {
+		return
+	}
+	p.answers++
+	p.raws = append(p.raws, hostnameFact(canonical, "CNAME", cn, now, nil))
+}
+
+// collectMX records the domain's published mail exchangers — the same
+// publication-fact character as a CNAME target.  Best-effort like the
+// CNAME probe: an MX lookup failure on a seed whose A lookup succeeded
+// is ordinary DNS (an apex without MX is normal), not a transport
+// outage; the answer counters keep the all-failed retry semantics
+// truthful.
+func (p *dnsPass) collectMX(ctx context.Context, r *net.Resolver, canonical string, now time.Time) {
+	mxs, err := lookupMX(ctx, r, canonical)
+	if err != nil {
+		return
+	}
+	for _, mx := range mxs {
+		if mx == nil || mx.Host == "" {
+			continue
+		}
+		if hn, herr := suppress.NormalizeDomain(mx.Host); herr == nil && hn != "" && hn != canonical {
+			p.answers++
+			p.mx++
+			p.raws = append(p.raws, hostnameFact(canonical, "MX", hn, now,
+				map[string]any{"pref": mx.Pref}))
 		}
 	}
-	// Every lookup failed → the transport is down, retryable.  Partial
-	// failures are normal DNS (NXDOMAIN lives in answers==0, not errors).
-	if lookups > 0 && answers == 0 && len(lookupErrs) == lookups {
+}
+
+// collectNS records the domain's published nameservers (same basis and
+// same best-effort treatment as MX).
+func (p *dnsPass) collectNS(ctx context.Context, r *net.Resolver, canonical string, now time.Time) {
+	nss, err := lookupNS(ctx, r, canonical)
+	if err != nil {
+		return
+	}
+	for _, ns := range nss {
+		if ns == nil || ns.Host == "" {
+			continue
+		}
+		if hn, herr := suppress.NormalizeDomain(ns.Host); herr == nil && hn != "" && hn != canonical {
+			p.answers++
+			p.ns++
+			p.raws = append(p.raws, hostnameFact(canonical, "NS", hn, now, nil))
+		}
+	}
+}
+
+// hostnameFact builds one hostname answer fact — the shape shared by
+// the CNAME, MX and NS record types (query name, record type, and the
+// type's own evidence fields; medium confidence like every recursive
+// answer).
+func hostnameFact(query, rtype, host string, now time.Time, extra map[string]any) RawFact {
+	dns := make(map[string]any, 2+len(extra))
+	dns["query"] = query
+	dns["type"] = rtype
+	for k, v := range extra {
+		dns[k] = v
+	}
+	return RawFact{
+		AssetKind:  "hostname",
+		Value:      host,
+		ObservedAt: now,
+		Confidence: "medium",
+		Extra:      map[string]any{"dns": dns},
+	}
+}
+
+// batch closes the pass: the total-failure sentinel (every seed's
+// address lookup errored — the transport is down, the pass is
+// retryable) or the collected facts with honest job statistics.
+// Partial failures are normal DNS: NXDOMAIN lives in answers==0, not
+// in errors.
+func (p *dnsPass) batch(resolver string, seedCount int) (*Batch, error) {
+	if p.lookups > 0 && p.answers == 0 && len(p.errs) == p.lookups {
 		return nil, fmt.Errorf("dns: all %d lookups failed (resolver %q): %v",
-			lookups, resolverLabel(ctx.Config.Resolver), lookupErrs[0])
+			p.lookups, resolverLabel(resolver), p.errs[0])
 	}
 	return &Batch{
-		Raws: raws,
+		Raws: p.raws,
 		Done: true, // point lookups: one batch per pass, no pagination
 		Notes: map[string]int{
-			"lookups": lookups, "answers": answers, "seeds": len(names),
-			"mx": mxAnswers, "ns": nsAnswers,
+			"lookups": p.lookups, "answers": p.answers, "seeds": seedCount,
+			"mx": p.mx, "ns": p.ns,
 		},
 	}, nil
 }

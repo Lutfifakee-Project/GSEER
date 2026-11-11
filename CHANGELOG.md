@@ -50,6 +50,17 @@ named, because data provenance must be transparent.
 
 ### Fixed
 
+- **Post-push CI gate restored (lint + Windows).**  The dns
+  connector's `Collect` grew past the gocyclo budget (30 > 20) when
+  MX/NS collection landed; it is decomposed into focused per-record
+  helpers (`collectAddrs`/`collectCNAME`/`collectMX`/`collectNS` over
+  one pass accumulator) with byte-identical behavior, and the first-run
+  tests now isolate the home directory on every platform —
+  `os.UserHomeDir()` reads `$HOME` on Unix but `%USERPROFILE%` on
+  Windows, so the Windows runner initialized into its real profile and
+  failed the artifact assertions.  New regression tests pin the
+  invalid-seed dead-letter contract, the self-referential CNAME guard,
+  and the MX preference evidence.
 - **ip2asn stored the registry instead of the AS name.**  The
   `asn.cymru.com` AS-name answer is five pipe-separated fields
   (`AS | CC | registry | allocated | AS NAME`); the parser read field

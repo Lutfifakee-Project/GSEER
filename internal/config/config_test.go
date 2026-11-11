@@ -187,13 +187,17 @@ func indexOf(s, sub string) int {
 // TestMain removes the default config file location influence so tests
 // don't pick up ~/.gseer/config.yaml from the dev environment.
 func TestMain(m *testing.M) {
-	// HOME is overridden to a temp dir so defaultConfigPath() returns
-	// a path that doesn't exist (env-only mode is the default in tests).
+	// HOME and USERPROFILE both point at the temp dir so
+	// defaultConfigPath() resolves the same NON-EXISTENT location on
+	// every platform: os.UserHomeDir() reads $HOME on Unix but
+	// %USERPROFILE% on Windows, so setting only HOME left Windows
+	// looking at the real profile.
 	tmp, err := os.MkdirTemp("", "gseer-config-test-")
 	if err != nil {
 		panic(err)
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
 	_ = os.Setenv("HOME", tmp)
+	_ = os.Setenv("USERPROFILE", tmp)
 	os.Exit(m.Run())
 }

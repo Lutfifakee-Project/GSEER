@@ -30,7 +30,7 @@ import (
 )
 
 // firstRun executes the root command with the given args against an
-// isolated HOME (configDir() honors it) and returns the output.
+// isolated home directory and returns the output.
 func firstRun(t *testing.T, args ...string) string {
 	t.Helper()
 	return firstRunAt(t, t.TempDir(), args...)
@@ -38,7 +38,16 @@ func firstRun(t *testing.T, args ...string) string {
 
 func firstRunAt(t *testing.T, home string, args ...string) string {
 	t.Helper()
+	// Isolate the home directory on EVERY platform.  configDir() and
+	// the config loader resolve the default paths through
+	// os.UserHomeDir(), which reads $HOME on Unix but %USERPROFILE% on
+	// Windows — setting only HOME initialized the Windows first run
+	// into the runner's REAL profile and failed the artifact
+	// assertions below (the v0.3.0 post-push CI regression).  Setting
+	// both variables is platform-honest: neither is read for anything
+	// else by the code under test.
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("GSEER_CONFIG", "")
 	oldCfg, oldQuiet, oldProfile := flags.configPath, flags.quiet, flags.profile
 	t.Cleanup(func() {
