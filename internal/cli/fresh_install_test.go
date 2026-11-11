@@ -25,7 +25,7 @@ package cli
 //      load-fixtures  → labeled synthetic corpus behind the consent gate
 //      search         → real query engine returns the expected row
 //      db backup      → consistent snapshot file (0600)
-//      db restore     → atomic replace, data intact afterwards
+//      db restore     → staged, validated, recoverable replacement; data intact afterwards
 //
 // If this flow ever needs a developer standing next to the user, the
 // Easy-to-Use principle is broken — this test is the guardrail.

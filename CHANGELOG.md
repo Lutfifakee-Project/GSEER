@@ -63,6 +63,38 @@ behavior was faked.
   Cymru origin answers (first line wins) and registry-only AS-name
   answers (stored organisation stays EMPTY — never the registry field)
   are pinned at the connector level.
+- **Harden `db restore` into an explicitly recoverable replacement.**
+  The personal-mode restore no longer opens the live database's
+  destination with a truncating copy and no longer discards a previous
+  recovery file.  The backup is first staged in a fresh exclusive
+  temporary file inside the live database's own directory, fsynced,
+  closed with its error checked, forced to `0600` after the umask, and
+  validated with a real SQLite open plus `PRAGMA quick_check` — only
+  then is the live database (together with its `-wal`/`-shm` sidecars,
+  so a stale WAL can never be crash-recovered against the new file)
+  moved aside to `gseer.db.restore-old` and the staged copy renamed
+  onto the live path (POSIX: same-directory `rename(2)`; Windows:
+  `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING|MOVEFILE_WRITE_THROUGH`,
+  never a cross-volume copy).  Every completed rename is rolled back in
+  reverse order on failure, a rollback that itself fails is reported
+  explicitly with the location of every artifact, and a previous
+  `.restore-old` is archived to a timestamped name — never silently
+  deleted.  User-facing text says "recoverable replacement", never
+  "atomic", because the two-rename swap is exactly that: recoverable.
+  Pinned by a deterministic failure-injection battery (staging copy /
+  sync / close / replacement / rollback failures, invalid and
+  truncated backups, missing backup, self-restore refusal, recovery
+  file preservation, cross-directory restores, first-run missing live
+  file) through I/O seams — no permission tricks that misbehave under
+  root — plus Windows-specific tests for the replacement primitive.
+- **The v0.3.1 acceptance battery is now tracked in the repository**
+  (`scripts/v031-acceptance.sh`): drives the real compiled binary in an
+  isolated temporary home (never the operator's data), fails fast with
+  explicit `[PASS]`/`[FAIL]` lines, counts only independently executed
+  assertions, and now also covers restore-failure recovery (invalid
+  and missing backups refused, live database intact, recovery file
+  preserved and archived, no staging leftovers).  Synthetic fixture
+  checks and live-DNS checks are labeled separately.
 - Docs corrected: `git clone` now says the real directory name
   (`gseer`, not `GSEER` — the old form fails on case-sensitive
   filesystems), build examples pin v0.3.1; `docs/SOURCES.md` §C and
@@ -70,7 +102,9 @@ behavior was faked.
   (`config` = explicit operator seeds, `index` = seeds drawn from the
   existing asset index) and the `seed-kind` scope (it selects the asset
   kind index seeds are drawn from — it does NOT re-classify the seeds
-  themselves).
+  themselves); `docs/QUICKSTART.md` now documents exactly what
+  `db restore` guarantees, where the previous database is preserved,
+  and how the operator recovers from a failed or wrong-file restore.
 
 ## [v0.3.0] — Zero-Config First Run, Personal Collection, New Identity
 

@@ -384,13 +384,16 @@ func newDBBackupCmd() *cobra.Command {
 }
 
 // newDBRestoreCmd attaches `gseer db restore <backup>` — replaces the
-// personal database file with the backup (confirmation-gated; the old
-// file is kept aside).
+// personal database with the backup as a staged, validated, RECOVERABLE
+// replacement (never documented as atomic): the live database is
+// preserved at <db>.restore-old until the operator removes it, and a
+// failed step rolls everything back or reports the rollback failure
+// explicitly.
 func newDBRestoreCmd() *cobra.Command {
 	var yes bool
 	cmd := &cobra.Command{
 		Use:   "restore <backup-file>",
-		Short: "Restore the personal database from a backup snapshot",
+		Short: "Restore the personal database from a backup snapshot (recoverable replacement)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg, err := loadEngineConfig()

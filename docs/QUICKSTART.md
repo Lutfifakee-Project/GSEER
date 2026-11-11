@@ -50,6 +50,48 @@ That is the whole personal workflow: the binary, one SQLite file, and
 your collection.  The same `source`/`collect`/`suppress`/`export`
 surface as self-hosted works against the single file.
 
+### What `db restore` actually guarantees
+
+`gseer db restore` is a **recoverable replacement**, deliberately not
+marketed as "atomic".  What it does, in order:
+
+1. **Stages** a full copy of the backup in a fresh temporary file
+   inside the live database's own directory, fsyncs it, and **validates
+   it** with a real SQLite open plus an integrity check — your live
+   database is not touched during any of this.
+2. **Moves the live database aside** — together with its `-wal`/`-shm`
+   sidecars, so a stale WAL can never be recovered against the new
+   file — to `gseer.db.restore-old` in the same directory.  A leftover
+   `.restore-old` from an earlier restore is never deleted: it is
+   archived to a timestamped name and the move is printed.
+3. **Renames the staged copy onto the live path** (same-directory
+   rename: atomic per step on Linux/macOS; on Windows the replacement
+   uses `MoveFileExW` with `MOVEFILE_REPLACE_EXISTING` and
+   `MOVEFILE_WRITE_THROUGH`).  For the brief moment between the two
+   renames the live path does not exist — a crash there loses nothing,
+   because the previous database is intact at `gseer.db.restore-old`.
+
+If any step fails, the command exits non-zero, the renames already
+performed are rolled back, and the live database is left byte-for-byte
+as it was; a rollback that itself fails is **reported explicitly** (the
+message names where every file is — follow its instructions before
+running GSEER again).  After a successful restore the previous database
+stays at `gseer.db.restore-old` until YOU remove it, so the recovery
+for a wrong-file restore is:
+
+```
+mv ~/.gseer/gseer.db.restore-old ~/.gseer/gseer.db
+```
+
+Platform notes: restore while no other GSEER process is using the
+database.  On Linux/macOS a concurrently running GSEER keeps working
+through the swap (its handles follow the old file); on Windows an open
+database or WAL sidecar makes the rename fail and the restore aborts
+cleanly with everything back in place.  Windows has no POSIX mode
+bits — the restored file's ACL follows the parent directory (which
+`setup --personal` created as a private directory); on Linux/macOS the
+restored database is always `0600`.
+
 ### Where collection targets come from — `seed-mode` and `seed-kind`
 
 - `--seed-mode config` (default): the queries target the seeds YOU type
