@@ -50,6 +50,17 @@ named, because data provenance must be transparent.
 
 ### Fixed
 
+- **ip2asn stored the registry instead of the AS name.**  The
+  `asn.cymru.com` AS-name answer is five pipe-separated fields
+  (`AS | CC | registry | allocated | AS NAME`); the parser read field
+  3, so the `asn_org` column got `arin`/`apnic` instead of e.g.
+  `GOOGLE - Google LLC, US`.  Verified against the live service
+  2026-11; regression tests pin the captured live-format lines.
+- **dns connector coverage gap: MX and NS.**  The connector now also
+  records MX and NS answers as hostname asset facts (same resolver,
+  same terms basis); MX/NS lookups are best-effort per seed and their
+  answer counts land in job stats.  TXT stays uncollected by design
+  (no typed, searchable column — documented in SOURCES.md §C).
 - `gseer collect status` no longer runs ad-hoc SQL in the CLI; it
   reads the same store contract the rest of the engine uses (and now
   works in personal mode).
