@@ -146,7 +146,15 @@ commercial terms; indexing derived data not granted on free tiers).
    operator's own infrastructure.  Resolved data is about domains, not
    persons.
 9. **Provenance**: `provenance = "dns"` on every observation; evidence
-   carries the query name and record type.
+   carries the query name and record type.  The operator's seed itself
+   is recorded as a first-class `domain` asset (confidence `high`) whose
+   evidence carries the seed marker (`seed: {mode: …}`) and NO record
+   type — the seed is the collection TARGET the operator named, not a
+   record answer, and GSEER never presents it as one.  Every record
+   answer about the seed carries the same canonical query name, so the
+   seed ↔ resolved IP ↔ CNAME/MX/NS relationships stay queryable;
+   collecting the same seed from several sources merges into ONE asset
+   with unioned source provenance.
 10. **Freshness**: the observation time IS the lookup time; re-running
     the connector ages last_seen forward (stale flag clears).
 11. **Known limitations**: recursive answers may come from cache (hence

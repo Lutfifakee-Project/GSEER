@@ -37,6 +37,10 @@ gseer source add my-dns --type dns --seed-mode config \
     --seeds example.net,example.org --enable --yes
 gseer collect run --source my-dns
 
+# The seeds themselves are assets too — searchable by exact value:
+gseer search 'asset_value=="example.net"'
+gseer search 'asset_kind=="domain"'
+
 # Backup / restore (one file — copy it anywhere):
 gseer db backup --out backup.db
 gseer db restore backup.db
@@ -45,6 +49,23 @@ gseer db restore backup.db
 That is the whole personal workflow: the binary, one SQLite file, and
 your collection.  The same `source`/`collect`/`suppress`/`export`
 surface as self-hosted works against the single file.
+
+### Where collection targets come from — `seed-mode` and `seed-kind`
+
+- `--seed-mode config` (default): the queries target the seeds YOU type
+  in `--seeds` (domains for `dns`, addresses for `ip2asn`/`ptr`).
+- `--seed-mode index`: the queries target identifiers ALREADY in your
+  index — e.g. re-resolve every domain you have collected, or enrich
+  every IP.  Nothing is fetched from outside your own index.
+- `--seed-kind` applies ONLY in `seed-mode index`: it selects the asset
+  kind the seeds are drawn from (`ip` for `ip2asn`/`ptr`, `domain` for
+  `dns`).  It does not re-classify or reinterpret the seeds themselves,
+  and it has no effect in `seed-mode config`.
+
+```bash
+# example: enrich every IP already in the index with ASN data
+gseer source add my-asn --type ip2asn --seed-mode index --seed-kind ip --enable --yes
+```
 
 ---
 

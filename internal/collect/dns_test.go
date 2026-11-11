@@ -87,7 +87,7 @@ func TestDNSConnectorRecordsAnswers(t *testing.T) {
 	if !b.Done {
 		t.Error("dns pass must be Done (point lookups)")
 	}
-	var ips, hosts int
+	var ips, hosts, domains int
 	for _, r := range b.Raws {
 		switch r.AssetKind {
 		case "ip":
@@ -100,10 +100,15 @@ func TestDNSConnectorRecordsAnswers(t *testing.T) {
 			if r.Value != "cdn.example" {
 				t.Errorf("CNAME target not canonicalized: %q", r.Value)
 			}
+		case "domain":
+			domains++
+			if r.Value != "example.com" {
+				t.Errorf("seed asset not canonicalized: %q", r.Value)
+			}
 		}
 	}
-	if ips != 2 || hosts != 1 {
-		t.Fatalf("expected 2 ips + 1 hostname, got %d/%d", ips, hosts)
+	if ips != 2 || hosts != 1 || domains != 1 {
+		t.Fatalf("expected 2 ips + 1 hostname + 1 seed domain, got %d/%d/%d", ips, hosts, domains)
 	}
 	if b.Notes["lookups"] != 1 || b.Notes["answers"] != 3 {
 		t.Errorf("notes wrong: %+v", b.Notes)
@@ -200,8 +205,155 @@ func TestDNSConnectorMXFailureIsBestEffort(t *testing.T) {
 	if err != nil {
 		t.Fatalf("MX/NS failures on a live seed must not fail the pass, got %v", err)
 	}
-	if len(b.Raws) != 1 {
-		t.Errorf("expected only the A-record fact, got %d records", len(b.Raws))
+	if len(b.Raws) != 2 {
+		t.Errorf("expected the A-record fact plus the seed asset fact, got %d records", len(b.Raws))
+	}
+	kinds := map[string]int{}
+	for _, r := range b.Raws {
+		kinds[r.AssetKind]++
+	}
+	if kinds["ip"] != 1 || kinds["domain"] != 1 {
+		t.Errorf("expected one ip + one seed domain fact, got %+v", kinds)
+	}
+}
+
+// TestDNSConnectorSeedAssetIsFirstClass pins the seed-asset contract:
+// the operator's seed itself is recorded as a canonicalized domain asset
+// fact with high confidence and a seed marker in its evidence — and it
+// asserts NO dns record type, because no record answer was received
+// here (honesty: the seed is the collection target, not an observation
+// the resolver returned).
+func TestDNSConnectorSeedAssetIsFirstClass(t *testing.T) {
+	withSeams(t,
+		func() ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.IPv4(203, 0, 113, 7).To4()}}, nil
+		},
+		func() (string, error) { return "", &net.DNSError{Err: "no such host", IsNotFound: true} },
+		func(string) ([]string, error) { return nil, errors.New("not used") })
+
+	b, err := dnsConnector{}.Collect(ctxFor(SourceConfig{SeedMode: "config", Seeds: []string{"Example.COM."}}))
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	var seed *RawFact
+	for i := range b.Raws {
+		if b.Raws[i].AssetKind == "domain" {
+			seed = &b.Raws[i]
+			break
+		}
+	}
+	if seed == nil {
+		t.Fatalf("no domain seed asset fact in %+v", b.Raws)
+	}
+	if seed.Value != "example.com" {
+		t.Errorf("seed asset must be canonicalized (case folded, root dot stripped), got %q", seed.Value)
+	}
+	if seed.Confidence != "high" {
+		t.Errorf("seed asset confidence must be high (operator-declared), got %q", seed.Confidence)
+	}
+	seedEv, _ := seed.Extra["seed"].(map[string]any)
+	if seedEv == nil {
+		t.Fatalf("seed asset evidence must carry the seed marker, got %+v", seed.Extra)
+	}
+	if m, _ := seedEv["mode"].(string); m != "config" {
+		t.Errorf("seed evidence mode wrong: %+v", seedEv)
+	}
+	if _, hasDNS := seed.Extra["dns"]; hasDNS {
+		t.Error("seed asset must NOT carry dns record evidence (no record answer was received)")
+	}
+	// The record answers keep their honest shape: the ip fact carries
+	// the canonical query name, tying it to the seed asset's identity.
+	for _, r := range b.Raws {
+		if r.AssetKind != "ip" {
+			continue
+		}
+		dnsMap, _ := r.Extra["dns"].(map[string]any)
+		if q, _ := dnsMap["query"].(string); q != "example.com" {
+			t.Errorf("ip fact must carry the canonical query name tying it to the seed, got %q", q)
+		}
+	}
+}
+
+// TestDNSConnectorSeedAssetNeverMasksTransportFailure pins the sentinel
+// contract under the seed-asset feature: the seed facts are the
+// operator's own declarations — they must never turn a dead transport
+// into a successful pass.  Every lookup failed, no answer came back →
+// the pass fails (retryable), exactly as before the seed asset existed.
+func TestDNSConnectorSeedAssetNeverMasksTransportFailure(t *testing.T) {
+	withSeams(t,
+		func() ([]net.IPAddr, error) {
+			return nil, &net.DNSError{Err: "i/o timeout", IsTimeout: true}
+		},
+		func() (string, error) { return "", &net.DNSError{Err: "i/o timeout", IsTimeout: true} },
+		func(string) ([]string, error) { return nil, errors.New("not used") })
+
+	_, err := dnsConnector{}.Collect(ctxFor(SourceConfig{SeedMode: "config", Seeds: []string{"example.com"}}))
+	if err == nil || !stringsContains(err.Error(), "all 1 lookups failed") {
+		t.Fatalf("seed asset must not mask a dead transport, got %v", err)
+	}
+}
+
+// TestDNSConnectorToleratesNilAndMalformedMXNSEntries is the defensive
+// regression for the MX/NS loops: resolver answers may carry nil
+// pointers, empty or whitespace-only hosts, trailing root dots, and
+// malformed names.  The connector must skip the unusable entries
+// without panicking, normalize the usable ones (no trailing dot), and
+// keep counting only the facts it actually kept.
+func TestDNSConnectorToleratesNilAndMalformedMXNSEntries(t *testing.T) {
+	withSeams(t,
+		func() ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.IPv4(203, 0, 113, 7).To4()}}, nil
+		},
+		func() (string, error) { return "", &net.DNSError{Err: "no such host", IsNotFound: true} },
+		func(string) ([]string, error) { return nil, errors.New("not used") })
+	withSeamsMXNS(t,
+		func() ([]*net.MX, error) {
+			return []*net.MX{
+				nil,                                    // nil entry (malformed answer)
+				{Host: "", Pref: 5},                    // empty host
+				{Host: "   ", Pref: 6},                 // whitespace-only host
+				{Host: "mx1.example.com.", Pref: 10},   // usable, trailing root dot
+				{Host: "bad label!.example", Pref: 20}, // malformed name
+			}, nil
+		},
+		func() ([]*net.NS, error) {
+			return []*net.NS{
+				nil,                        // nil entry (malformed answer)
+				{Host: ""},                 // empty host
+				{Host: "ns1.example.com."}, // usable, trailing root dot
+			}, nil
+		})
+
+	b, err := dnsConnector{}.Collect(ctxFor(SourceConfig{SeedMode: "config", Seeds: []string{"example.com"}}))
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	type hostType struct {
+		host string
+		rt   string
+	}
+	var kept []hostType
+	for _, r := range b.Raws {
+		if r.AssetKind != "hostname" {
+			continue
+		}
+		dnsMap, _ := r.Extra["dns"].(map[string]any)
+		rt, _ := dnsMap["type"].(string)
+		kept = append(kept, hostType{r.Value, rt})
+	}
+	want := []hostType{{"mx1.example.com", "MX"}, {"ns1.example.com", "NS"}}
+	if len(kept) != len(want) {
+		t.Fatalf("nil/empty/malformed entries must be skipped, usable ones kept: got %+v", kept)
+	}
+	for i, w := range want {
+		if kept[i] != w {
+			t.Errorf("fact %d = %+v, want %+v (trailing dot normalized, type kept)", i, kept[i], w)
+		}
+	}
+	// Notes count the KEPT facts (mx:1, ns:1); the skipped entries never
+	// become facts or counters.
+	if b.Notes["mx"] != 1 || b.Notes["ns"] != 1 {
+		t.Errorf("mx/ns answer counters wrong: %+v", b.Notes)
 	}
 }
 
@@ -247,8 +399,13 @@ func TestDNSConnectorSkipsSelfReferentialCNAME(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Collect: %v", err)
 	}
-	if len(b.Raws) != 1 || b.Raws[0].AssetKind != "ip" {
-		t.Fatalf("self-referential CNAME must produce no hostname fact, got %+v", b.Raws)
+	if len(b.Raws) != 2 {
+		t.Fatalf("self-referential CNAME must produce no hostname fact (seed asset + ip only), got %+v", b.Raws)
+	}
+	for _, r := range b.Raws {
+		if r.AssetKind != "domain" && r.AssetKind != "ip" {
+			t.Fatalf("self-referential CNAME must produce no hostname fact, got %+v", b.Raws)
+		}
 	}
 	if b.Notes["answers"] != 1 {
 		t.Errorf("answers counter wrong: %+v", b.Notes)
@@ -316,6 +473,74 @@ func TestIP2ASNConnectorEnriches(t *testing.T) {
 	}
 	if b.Notes["hits"] != 1 {
 		t.Errorf("hit counter wrong: %+v", b.Notes)
+	}
+}
+
+// TestIP2ASNConnectorMultiLineAnswerUsesFirstLine pins the multi-answer
+// behavior: origin.asn.cymru.com can answer with several origin lines
+// for one address; the connector enriches from the FIRST line (the
+// most specific origin) and audits nothing — a regression here would
+// silently enrich assets from the wrong origin.
+func TestIP2ASNConnectorMultiLineAnswerUsesFirstLine(t *testing.T) {
+	raws := map[string][]string{}
+	withSeams(t,
+		func() ([]net.IPAddr, error) { return nil, errors.New("not used") },
+		func() (string, error) { return "", errors.New("not used") },
+		func(name string) ([]string, error) {
+			if v, ok := raws[name]; ok {
+				return v, nil
+			}
+			return nil, &net.DNSError{Err: "no such host", IsNotFound: true}
+		})
+	raws["7.113.0.203."+ip2ASNDomainV4] = []string{
+		"64500 | 203.0.113.0/24 | US | arin | 2002-04-23",
+		"64501 | 203.0.113.0/24 | US | arin | 2004-01-01", // second origin line
+	}
+	raws["AS64500."+asnNameDomain] = []string{"64500 | US | arin | 2002-04-23 | FIRST-AS, US"}
+
+	b, err := ip2asnConnector{}.Collect(ctxFor(SourceConfig{SeedMode: "config", Seeds: []string{"203.0.113.7"}}))
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if len(b.Raws) != 1 {
+		t.Fatalf("expected exactly one enriched record, got %+v", b.Raws)
+	}
+	if b.Raws[0].ASN != 64500 || b.Raws[0].ASNOrg != "FIRST-AS, US" {
+		t.Errorf("enrichment must use the FIRST origin line, got: %+v", b.Raws[0])
+	}
+}
+
+// TestIP2ASNConnectorASNameNeverRegistry pins the stored-organization
+// contract at the connector level: when the AS-name interface answers
+// in a registry-only shape (or not at all), the stored ASNOrg stays
+// EMPTY — it must never fall back to the registry field ("arin"), the
+// exact bug the official v0.3.0 correction fixed.
+func TestIP2ASNConnectorASNameNeverRegistry(t *testing.T) {
+	raws := map[string][]string{}
+	withSeams(t,
+		func() ([]net.IPAddr, error) { return nil, errors.New("not used") },
+		func() (string, error) { return "", errors.New("not used") },
+		func(name string) ([]string, error) {
+			if v, ok := raws[name]; ok {
+				return v, nil
+			}
+			return nil, &net.DNSError{Err: "no such host", IsNotFound: true}
+		})
+	raws["7.113.0.203."+ip2ASNDomainV4] = []string{"64500 | 203.0.113.0/24 | US | arin | 2002-04-23"}
+	raws["AS64500."+asnNameDomain] = []string{"64500 | US | arin"} // registry-only: no name field
+
+	b, err := ip2asnConnector{}.Collect(ctxFor(SourceConfig{SeedMode: "config", Seeds: []string{"203.0.113.7"}}))
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	if len(b.Raws) != 1 {
+		t.Fatalf("expected exactly one enriched record, got %+v", b.Raws)
+	}
+	if b.Raws[0].ASNOrg != "" {
+		t.Errorf("registry-only AS-name answer must store an EMPTY organisation, got %q", b.Raws[0].ASNOrg)
+	}
+	if b.Raws[0].ASN != 64500 {
+		t.Errorf("the origin enrichment itself must survive, got %+v", b.Raws[0])
 	}
 }
 

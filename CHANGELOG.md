@@ -39,13 +39,38 @@ behavior was faked.
 
 ### Added
 
+- **The operator's DNS seed is a first-class searchable domain asset.**
+  Collecting `--seeds example.com` now records `example.com` itself as
+  a `domain` asset (confidence `high`, evidence marked
+  `seed: {mode: …}`), so `gseer search 'asset_value=="example.com"'`
+  finds it and the seed ↔ resolved IP ↔ CNAME/MX/NS relationships stay
+  queryable through the shared canonical query name and the source's
+  provenance.  Honesty contract kept: the seed fact asserts only that
+  the connector TARGETED the name — it carries no DNS record type and
+  never claims a record answer the resolver did not return; it is
+  counted neither as an answer nor as an error, so the
+  all-lookups-failed retry sentinel behaves exactly as before.  Asset
+  identity stays `(kind="domain", value)` after canonicalization, so
+  re-collecting the same seed from several sources merges into ONE
+  asset with unioned source provenance instead of duplicates.
 - Regression tests driving the real binary through first-command
   flows (`source add`/`search`/`suppress list`/`doctor`) and module
   path guards that keep `go.mod`, the imports, and the docs on the
   lowercase public path forever.
+- DNS/ip2asn regression hardening: nil and empty `net.MX`/`net.NS`
+  answer entries, whitespace-only and malformed hostnames, and
+  trailing-root-dot normalization are now pinned by tests; multi-line
+  Cymru origin answers (first line wins) and registry-only AS-name
+  answers (stored organisation stays EMPTY — never the registry field)
+  are pinned at the connector level.
 - Docs corrected: `git clone` now says the real directory name
   (`gseer`, not `GSEER` — the old form fails on case-sensitive
-  filesystems), build examples pin v0.3.1.
+  filesystems), build examples pin v0.3.1; `docs/SOURCES.md` §C and
+  `docs/QUICKSTART.md` document the seed asset, the `seed-mode`
+  (`config` = explicit operator seeds, `index` = seeds drawn from the
+  existing asset index) and the `seed-kind` scope (it selects the asset
+  kind index seeds are drawn from — it does NOT re-classify the seeds
+  themselves).
 
 ## [v0.3.0] — Zero-Config First Run, Personal Collection, New Identity
 

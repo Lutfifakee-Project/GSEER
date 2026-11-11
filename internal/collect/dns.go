@@ -71,9 +71,12 @@ func (dnsConnector) Review() Review {
 }
 
 // Collect implements Collector: one point-lookup pass over the seeds.
-// Each valid seed fans out into four focused record-type collectors
-// (A/AAAA, CNAME, MX, NS) sharing one pass accumulator; the helpers live
-// below Collect and keep this loop the whole story of a pass.
+// Each valid seed is recorded itself — as a first-class domain asset
+// (the collection TARGET, marked in the evidence, never a fabricated
+// DNS record) — and then fans out into four focused record-type
+// collectors (A/AAAA, CNAME, MX, NS) sharing one pass accumulator; the
+// helpers live below Collect and keep this loop the whole story of a
+// pass.
 func (dnsConnector) Collect(ctx Ctx) (*Batch, error) {
 	names, err := seeds(ctx, "domain")
 	if err != nil {
@@ -81,6 +84,10 @@ func (dnsConnector) Collect(ctx Ctx) (*Batch, error) {
 	}
 	r := dnsResolver(ctx.Config.Resolver)
 	now := time.Now().UTC()
+	mode := ctx.Config.SeedMode
+	if mode == "" {
+		mode = "config" // seeds() default
+	}
 	pass := newDNSPass(len(names))
 	for _, name := range names {
 		if err := ctx.Context.Err(); err != nil {
@@ -93,6 +100,7 @@ func (dnsConnector) Collect(ctx Ctx) (*Batch, error) {
 			continue
 		}
 		pass.lookups++
+		pass.collectSeedAsset(canonical, mode, now)
 		pass.collectAddrs(ctx.Context, r, canonical, now)
 		pass.collectCNAME(ctx.Context, r, canonical, now)
 		pass.collectMX(ctx.Context, r, canonical, now)
@@ -114,6 +122,28 @@ type dnsPass struct {
 
 func newDNSPass(n int) *dnsPass {
 	return &dnsPass{raws: make([]RawFact, 0, n)}
+}
+
+// collectSeedAsset records the operator's seed itself as a first-class
+// domain asset fact: the name the operator asked GSEER to collect is an
+// asset in its own right (searchable by its exact value), and every
+// record answer about it carries the same canonical query name, so the
+// seed ↔ resolved IP ↔ CNAME/MX/NS relationships stay queryable through
+// the shared evidence and the observing source's provenance.
+//
+// Honesty contract: this fact asserts only that the connector targeted
+// the name — the evidence carries the seed marker and NO dns record
+// type, because no record answer was received here.  It is counted as
+// neither an answer nor an error, so the all-lookups-failed retry
+// sentinel keeps exactly its pre-seed-asset semantics.
+func (p *dnsPass) collectSeedAsset(canonical, seedMode string, now time.Time) {
+	p.raws = append(p.raws, RawFact{
+		AssetKind:  "domain",
+		Value:      canonical,
+		ObservedAt: now,
+		Confidence: "high", // operator-declared target, not a recursive answer
+		Extra:      map[string]any{"seed": map[string]any{"mode": seedMode}},
+	})
 }
 
 // collectAddrs records the A/AAAA answers as ip asset facts (recursive
@@ -224,7 +254,9 @@ func hostnameFact(query, rtype, host string, now time.Time, extra map[string]any
 // address lookup errored — the transport is down, the pass is
 // retryable) or the collected facts with honest job statistics.
 // Partial failures are normal DNS: NXDOMAIN lives in answers==0, not
-// in errors.
+// in errors.  Seed-asset facts (the collection targets themselves) are
+// deliberately outside this decision — a failed transport must not be
+// masked by the operator's own declarations.
 func (p *dnsPass) batch(resolver string, seedCount int) (*Batch, error) {
 	if p.lookups > 0 && p.answers == 0 && len(p.errs) == p.lookups {
 		return nil, fmt.Errorf("dns: all %d lookups failed (resolver %q): %v",
