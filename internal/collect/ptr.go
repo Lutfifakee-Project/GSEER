@@ -43,12 +43,12 @@ package collect
 // cache).  Full review: docs/SOURCES.md §E (Reverse DNS).
 
 import (
-        "context"
-        "fmt"
-        "net"
-        "time"
+	"context"
+	"fmt"
+	"net"
+	"time"
 
-        "github.com/Lutfifakee-Project/GSEER/internal/suppress"
+	"github.com/Lutfifakee-Project/GSEER/internal/suppress"
 )
 
 // ptrConnector records reverse-DNS answers about operator-named addresses.
@@ -59,83 +59,83 @@ func (ptrConnector) Kind() string { return "ptr" }
 
 // Review implements Collector (docs/SOURCES.md §E).
 func (ptrConnector) Review() Review {
-        return Review{
-                Verdict: ReviewEnabled,
-                Why:     "standard reverse-DNS (PTR) recursion via the operator's resolver; answers are protocol facts, the operator names every target",
-                DocRef:  "docs/SOURCES.md §E (Reverse DNS)",
-        }
+	return Review{
+		Verdict: ReviewEnabled,
+		Why:     "standard reverse-DNS (PTR) recursion via the operator's resolver; answers are protocol facts, the operator names every target",
+		DocRef:  "docs/SOURCES.md §E (Reverse DNS)",
+	}
 }
 
 // Collect implements Collector: one pointer-lookup pass over the seeds.
 func (ptrConnector) Collect(ctx Ctx) (*Batch, error) {
-        addrs, err := seeds(ctx, "ip")
-        if err != nil {
-                return nil, err
-        }
-        r := dnsResolver(ctx.Config.Resolver)
-        now := time.Now().UTC()
-        raws := make([]RawFact, 0, len(addrs))
-        lookups, answers := 0, 0
-        var lookupErrs []error
-        for _, addr := range addrs {
-                if err := ctx.Context.Err(); err != nil {
-                        return nil, err
-                }
-                canonical, nerr := suppress.NormalizeIP(addr)
-                if nerr != nil {
-                        raws = append(raws, RawFact{AssetKind: "ip", Value: addr, ObservedAt: now})
-                        // the pipeline dead-letters the invalid seed with its reason
-                        continue
-                }
-                ip := net.ParseIP(canonical)
-                if ip == nil {
-                        raws = append(raws, RawFact{AssetKind: "ip", Value: addr, ObservedAt: now})
-                        continue
-                }
-                lookups++
+	addrs, err := seeds(ctx, "ip")
+	if err != nil {
+		return nil, err
+	}
+	r := dnsResolver(ctx.Config.Resolver)
+	now := time.Now().UTC()
+	raws := make([]RawFact, 0, len(addrs))
+	lookups, answers := 0, 0
+	var lookupErrs []error
+	for _, addr := range addrs {
+		if err := ctx.Context.Err(); err != nil {
+			return nil, err
+		}
+		canonical, nerr := suppress.NormalizeIP(addr)
+		if nerr != nil {
+			raws = append(raws, RawFact{AssetKind: "ip", Value: addr, ObservedAt: now})
+			// the pipeline dead-letters the invalid seed with its reason
+			continue
+		}
+		ip := net.ParseIP(canonical)
+		if ip == nil {
+			raws = append(raws, RawFact{AssetKind: "ip", Value: addr, ObservedAt: now})
+			continue
+		}
+		lookups++
 
-                names, perr := lookupAddr(ctx.Context, r, canonical)
-                if perr != nil {
-                        lookupErrs = append(lookupErrs, perr)
-                        continue
-                }
-                for _, name := range names {
-                        // LookupAddr returns names with a trailing dot; the
-                        // normalization drops it and the hostname kind keeps
-                        // the distinction from registrable domains.
-                        if hn, herr := suppress.NormalizeDomain(name); herr == nil && hn != "" {
-                                answers++
-                                raws = append(raws, RawFact{
-                                        AssetKind:  "hostname",
-                                        Value:      hn,
-                                        ObservedAt: now,
-                                        Confidence: "medium", // recursive answers may be cached
-                                        Extra: map[string]any{
-                                                "ptr": map[string]any{"ip": canonical, "name": name},
-                                        },
-                                })
-                        }
-                }
-        }
-        // Every lookup failed → the transport is down, retryable.  Partial
-        // failures are normal DNS (no PTR record lives in answers==0, not
-        // errors).
-        if lookups > 0 && answers == 0 && len(lookupErrs) == lookups {
-                return nil, fmt.Errorf("ptr: all %d reverse lookups failed (resolver %q): %v",
-                        lookups, resolverLabel(ctx.Config.Resolver), lookupErrs[0])
-        }
-        return &Batch{
-                Raws: raws,
-                Done: true, // point lookups: one batch per pass, no pagination
-                Notes: map[string]int{
-                        "lookups": lookups, "answers": answers, "seeds": len(addrs),
-                },
-        }, nil
+		names, perr := lookupAddr(ctx.Context, r, canonical)
+		if perr != nil {
+			lookupErrs = append(lookupErrs, perr)
+			continue
+		}
+		for _, name := range names {
+			// LookupAddr returns names with a trailing dot; the
+			// normalization drops it and the hostname kind keeps
+			// the distinction from registrable domains.
+			if hn, herr := suppress.NormalizeDomain(name); herr == nil && hn != "" {
+				answers++
+				raws = append(raws, RawFact{
+					AssetKind:  "hostname",
+					Value:      hn,
+					ObservedAt: now,
+					Confidence: "medium", // recursive answers may be cached
+					Extra: map[string]any{
+						"ptr": map[string]any{"ip": canonical, "name": name},
+					},
+				})
+			}
+		}
+	}
+	// Every lookup failed → the transport is down, retryable.  Partial
+	// failures are normal DNS (no PTR record lives in answers==0, not
+	// errors).
+	if lookups > 0 && answers == 0 && len(lookupErrs) == lookups {
+		return nil, fmt.Errorf("ptr: all %d reverse lookups failed (resolver %q): %v",
+			lookups, resolverLabel(ctx.Config.Resolver), lookupErrs[0])
+	}
+	return &Batch{
+		Raws: raws,
+		Done: true, // point lookups: one batch per pass, no pagination
+		Notes: map[string]int{
+			"lookups": lookups, "answers": answers, "seeds": len(addrs),
+		},
+	}, nil
 }
 
 // DNS lookup seam (tests fake it; production resolves through r).
 var lookupAddr = func(ctx context.Context, r *net.Resolver, addr string) ([]string, error) {
-        return r.LookupAddr(ctx, addr)
+	return r.LookupAddr(ctx, addr)
 }
 
 func init() { register(ptrConnector{}) }
