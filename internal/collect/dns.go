@@ -21,12 +21,18 @@ package collect
 // WHAT IT DOES: resolves names the OPERATOR or the index already named
 // (seed_mode "config" or "index") through standard DNS recursion — the
 // protocol every system on the internet speaks — and records the factual
-// answers as asset-level facts (A/AAAA → ip assets; CNAME targets →
-// hostname assets).
+// answers as asset-level facts (A/AAAA → ip assets; CNAME, MX and NS
+// targets → hostname assets).  MX and NS answers name the operator's
+// published mail exchangers and nameservers — the same kind of
+// publication fact a CNAME target is — and stay within the reviewed
+// terms basis (§C: ordinary recursion of operator-named names).
 //
 // WHAT IT NEVER DOES: no zone transfers, no brute-force enumeration, no
 // guessing of subdomains, no NXDOMAIN-walking.  The seed list bounds the
-// queries; the DNS answers bound the facts.
+// queries; the DNS answers bound the facts.  TXT records are NOT
+// collected: they are free-form metadata strings with no typed,
+// searchable column in the index (collected they would be evidence-only
+// noise, not searchable observations).
 //
 // Discovery ≠ observation (P1 contract 3): "example.com resolved to
 // 203.0.113.7 at T" is a FACT about publication; it is NOT evidence that
@@ -74,6 +80,7 @@ func (dnsConnector) Collect(ctx Ctx) (*Batch, error) {
 	now := time.Now().UTC()
 	raws := make([]RawFact, 0, len(names))
 	lookups, answers := 0, 0
+	mxAnswers, nsAnswers := 0, 0
 	var lookupErrs []error
 	for _, name := range names {
 		if err := ctx.Context.Err(); err != nil {
@@ -121,6 +128,57 @@ func (dnsConnector) Collect(ctx Ctx) (*Batch, error) {
 				})
 			}
 		}
+		// MX answers name the domain's published mail exchangers — the
+		// same publication-fact character as a CNAME target.  Best-effort
+		// like the CNAME probe: an MX lookup failure on a seed whose A
+		// lookup succeeded is ordinary DNS (an apex without MX is normal),
+		// not a transport outage; the answer counters keep the all-failed
+		// retry semantics truthful.
+		mxs, mxerr := lookupMX(ctx.Context, r, canonical)
+		if mxerr == nil {
+			for _, mx := range mxs {
+				if mx == nil || mx.Host == "" {
+					continue
+				}
+				if hn, herr := suppress.NormalizeDomain(mx.Host); herr == nil && hn != "" && hn != canonical {
+					answers++
+					mxAnswers++
+					raws = append(raws, RawFact{
+						AssetKind:  "hostname",
+						Value:      hn,
+						ObservedAt: now,
+						Confidence: "medium",
+						Extra: map[string]any{
+							"dns": map[string]any{"query": canonical, "type": "MX", "pref": mx.Pref},
+						},
+					})
+				}
+			}
+		}
+
+		// NS answers name the domain's published nameservers (same basis,
+		// same best-effort treatment).
+		nss, nserr := lookupNS(ctx.Context, r, canonical)
+		if nserr == nil {
+			for _, ns := range nss {
+				if ns == nil || ns.Host == "" {
+					continue
+				}
+				if hn, herr := suppress.NormalizeDomain(ns.Host); herr == nil && hn != "" && hn != canonical {
+					answers++
+					nsAnswers++
+					raws = append(raws, RawFact{
+						AssetKind:  "hostname",
+						Value:      hn,
+						ObservedAt: now,
+						Confidence: "medium",
+						Extra: map[string]any{
+							"dns": map[string]any{"query": canonical, "type": "NS"},
+						},
+					})
+				}
+			}
+		}
 	}
 	// Every lookup failed → the transport is down, retryable.  Partial
 	// failures are normal DNS (NXDOMAIN lives in answers==0, not errors).
@@ -133,6 +191,7 @@ func (dnsConnector) Collect(ctx Ctx) (*Batch, error) {
 		Done: true, // point lookups: one batch per pass, no pagination
 		Notes: map[string]int{
 			"lookups": lookups, "answers": answers, "seeds": len(names),
+			"mx": mxAnswers, "ns": nsAnswers,
 		},
 	}, nil
 }
@@ -189,6 +248,12 @@ var (
 	}
 	lookupCNAME = func(ctx context.Context, r *net.Resolver, host string) (string, error) {
 		return r.LookupCNAME(ctx, host)
+	}
+	lookupMX = func(ctx context.Context, r *net.Resolver, host string) ([]*net.MX, error) {
+		return r.LookupMX(ctx, host)
+	}
+	lookupNS = func(ctx context.Context, r *net.Resolver, host string) ([]*net.NS, error) {
+		return r.LookupNS(ctx, host)
 	}
 )
 

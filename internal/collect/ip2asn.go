@@ -200,19 +200,21 @@ func parseCymruOrigin(line string) (cymruOrigin, error) {
 }
 
 // parseCymruASName extracts the AS name from an asn.cymru.com TXT line
-// ("AS64500 | CC | THE AS NAME | ...") defensively: the name is the field
-// after the second pipe, cut at the next pipe; an unexpected shape
-// returns "".
+// defensively.  The documented live format is FIVE pipe-separated fields
+// (verified against the production service 2026-11):
+//
+//	"AS15169 | US | arin | 2000-03-30 | GOOGLE - Google LLC, US"
+//	  ASN    | CC | registry | allocated | AS NAME
+//
+// so the name is the FIFTH field.  Anything else — fewer fields, an
+// empty name — returns "" (the caller treats the name as best-effort
+// enrichment and never blocks the ASN itself on it).
 func parseCymruASName(line string) string {
-	fields := strings.SplitN(line, "|", 3)
-	if len(fields) < 3 {
+	fields := strings.Split(line, "|")
+	if len(fields) < 5 {
 		return ""
 	}
-	name := fields[2]
-	if rest := strings.SplitN(name, "|", 2); len(rest) == 2 {
-		name = rest[0]
-	}
-	return strings.TrimSpace(name)
+	return strings.TrimSpace(fields[4])
 }
 
 // ip2ASNDomainOf picks the v4/v6 interface by address family.

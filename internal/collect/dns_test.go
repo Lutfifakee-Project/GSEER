@@ -29,11 +29,29 @@ import (
 
 func withSeams(t *testing.T, ip func() ([]net.IPAddr, error), cname func() (string, error), txt func(name string) ([]string, error)) {
 	t.Helper()
-	oldIP, oldCN, oldTXT := lookupIPAddr, lookupCNAME, lookupTXT
+	oldIP, oldCN, oldTXT, oldMX, oldNS := lookupIPAddr, lookupCNAME, lookupTXT, lookupMX, lookupNS
 	lookupIPAddr = func(context.Context, *net.Resolver, string) ([]net.IPAddr, error) { return ip() }
 	lookupCNAME = func(context.Context, *net.Resolver, string) (string, error) { return cname() }
 	lookupTXT = func(_ context.Context, _ *net.Resolver, name string) ([]string, error) { return txt(name) }
-	t.Cleanup(func() { lookupIPAddr, lookupCNAME, lookupTXT = oldIP, oldCN, oldTXT })
+	// MX/NS default to "no such host" so the dns connector's best-effort
+	// probes never reach the real resolver from a unit test.
+	lookupMX = func(context.Context, *net.Resolver, string) ([]*net.MX, error) {
+		return nil, &net.DNSError{Err: "no such host", IsNotFound: true}
+	}
+	lookupNS = func(context.Context, *net.Resolver, string) ([]*net.NS, error) {
+		return nil, &net.DNSError{Err: "no such host", IsNotFound: true}
+	}
+	t.Cleanup(func() { lookupIPAddr, lookupCNAME, lookupTXT, lookupMX, lookupNS = oldIP, oldCN, oldTXT, oldMX, oldNS })
+}
+
+// withSeamsMXNS overrides the MX/NS stubs set up by withSeams (call it
+// AFTER withSeams; the cleanup order restores both).
+func withSeamsMXNS(t *testing.T, mx func() ([]*net.MX, error), ns func() ([]*net.NS, error)) {
+	t.Helper()
+	oldMX, oldNS := lookupMX, lookupNS
+	lookupMX = func(context.Context, *net.Resolver, string) ([]*net.MX, error) { return mx() }
+	lookupNS = func(context.Context, *net.Resolver, string) ([]*net.NS, error) { return ns() }
+	t.Cleanup(func() { lookupMX, lookupNS = oldMX, oldNS })
 }
 
 func ctxFor(cfg SourceConfig) Ctx {
@@ -92,6 +110,91 @@ func TestDNSConnectorRecordsAnswers(t *testing.T) {
 	}
 }
 
+// TestDNSConnectorRecordsMXAndNS pins the MX/NS record types: a
+// mail-exchanger or nameserver answer becomes a hostname asset fact with
+// the query name, the record type and (for MX) the preference in its
+// evidence.  The answers stay best-effort like the CNAME probe.
+func TestDNSConnectorRecordsMXAndNS(t *testing.T) {
+	withSeams(t,
+		func() ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.IPv4(203, 0, 113, 7).To4()}}, nil
+		},
+		func() (string, error) { return "", &net.DNSError{Err: "no such host", IsNotFound: true} },
+		func(string) ([]string, error) { return nil, errors.New("not used") })
+	withSeamsMXNS(t,
+		func() ([]*net.MX, error) {
+			return []*net.MX{
+				{Host: "mail1.example.com.", Pref: 10},
+				{Host: "mail1.example.com.", Pref: 10}, // same target again: two answers, one fact after pipeline dedup
+				{Host: "Example.COM.", Pref: 20},       // apex itself: skipped
+			}, nil
+		},
+		func() ([]*net.NS, error) {
+			return []*net.NS{
+				{Host: "ns1.example.com."},
+				{Host: "ns2.example.com."},
+			}, nil
+		})
+
+	b, err := dnsConnector{}.Collect(ctxFor(SourceConfig{SeedMode: "config", Seeds: []string{"example.com"}}))
+	if err != nil {
+		t.Fatalf("Collect: %v", err)
+	}
+	types := map[string]string{}
+	for _, r := range b.Raws {
+		if r.AssetKind != "hostname" {
+			continue
+		}
+		dnsMap, _ := r.Extra["dns"].(map[string]any)
+		rt, _ := dnsMap["type"].(string)
+		types[r.Value] = rt
+	}
+	for want, wantType := range map[string]string{
+		"mail1.example.com": "MX",
+		"ns1.example.com":   "NS",
+		"ns2.example.com":   "NS",
+	} {
+		if types[want] != wantType {
+			t.Errorf("expected %s fact (type %s), got %q", want, wantType, types[want])
+		}
+	}
+	if _, dup := types["mail1.example.com."]; dup {
+		t.Error("MX target kept its trailing dot (not normalized)")
+	}
+	// Notes count ANSWERS as delivered (mx:2 for the duplicate target);
+	// the pipeline collapses them into one fact via intra-batch + L1/L2 dedup.
+	if b.Notes["mx"] != 2 || b.Notes["ns"] != 2 {
+		t.Errorf("mx/ns answer counters wrong: %+v", b.Notes)
+	}
+}
+
+// TestDNSConnectorMXFailureIsBestEffort: MX/NS lookup failures on a seed
+// whose A lookup succeeded are ordinary DNS, not a transport outage —
+// the pass must succeed (retrying it would not help).
+func TestDNSConnectorMXFailureIsBestEffort(t *testing.T) {
+	withSeams(t,
+		func() ([]net.IPAddr, error) {
+			return []net.IPAddr{{IP: net.IPv4(203, 0, 113, 7).To4()}}, nil
+		},
+		func() (string, error) { return "", &net.DNSError{Err: "no such host", IsNotFound: true} },
+		func(string) ([]string, error) { return nil, errors.New("not used") })
+	withSeamsMXNS(t,
+		func() ([]*net.MX, error) {
+			return nil, &net.DNSError{Err: "server misbehaving", IsTemporary: true}
+		},
+		func() ([]*net.NS, error) {
+			return nil, &net.DNSError{Err: "server misbehaving", IsTemporary: true}
+		})
+
+	b, err := dnsConnector{}.Collect(ctxFor(SourceConfig{SeedMode: "config", Seeds: []string{"example.com"}}))
+	if err != nil {
+		t.Fatalf("MX/NS failures on a live seed must not fail the pass, got %v", err)
+	}
+	if len(b.Raws) != 1 {
+		t.Errorf("expected only the A-record fact, got %d records", len(b.Raws))
+	}
+}
+
 func TestDNSConnectorToleratesNXDOMAINButFailsWhenAllDown(t *testing.T) {
 	// One seed NXDOMAIN (no error), one resolver outage (error):
 	// partial failure is normal DNS, total failure is retryable.
@@ -133,7 +236,9 @@ func TestIP2ASNConnectorEnriches(t *testing.T) {
 			return nil, &net.DNSError{Err: "no such host", IsNotFound: true}
 		})
 	txtNames["7.113.0.203."+ip2ASNDomainV4] = []string{"64500 | 203.0.113.0/24 | US | arin | 2002-04-23"}
-	txtNames["AS64500."+asnNameDomain] = []string{"AS64500 | US | EXAMPLE-AS, US | 203.0.113.0/24 | US"}
+	// Live asn.cymru.com wire format: "AS | CC | registry | allocated | AS NAME"
+	// (name is field 5; captured from the production service 2026-11).
+	txtNames["AS64500."+asnNameDomain] = []string{"64500 | US | arin | 2002-04-23 | EXAMPLE-AS, US"}
 
 	b, err := ip2asnConnector{}.Collect(ctxFor(SourceConfig{SeedMode: "index"}))
 	if err != nil {

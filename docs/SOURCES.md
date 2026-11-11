@@ -130,7 +130,7 @@ commercial terms; indexing derived data not granted on free tiers).
    are responsible for that provider's AUP; the default (system
    resolver) is the operator's own infrastructure.
 5. **Permission for automated collection and indexing**: resolution
-   answers (A/AAAA/CNAME records) are uncopyrighted protocol facts;
+   answers (A/AAAA/CNAME/MX/NS records) are uncopyrighted protocol facts;
    GSEER records the factual answer with its lookup time.  Queries are
    bounded by the seed list — only names the operator configured or
    that are already in the operator's index are resolved.
@@ -151,8 +151,14 @@ commercial terms; indexing derived data not granted on free tiers).
     the connector ages last_seen forward (stale flag clears).
 11. **Known limitations**: recursive answers may come from cache (hence
     confidence `medium`); negative answers (NXDOMAIN) are not facts and
-    are not stored; DNS data says nothing about reachability of services
-    (discovery ≠ observation — no port/HTTP/TLS/banner data is invented).
+    are not stored; MX/NS lookups are best-effort per seed (a lookup
+    miss on a seed whose A lookup succeeded is ordinary DNS — an apex
+    without MX is normal — and never fails the pass); TXT records are
+    deliberately NOT collected (free-form strings with no typed,
+    searchable column — collecting them would be evidence-only noise,
+    not searchable observations); DNS data says nothing about
+    reachability of services (discovery ≠ observation — no
+    port/HTTP/TLS/banner data is invented).
 12. **Verdict: `reviewed-enabled`** — clear terms (standard protocol,
     operator-named targets, self-imposed rates), no third-party
     dependency by default.

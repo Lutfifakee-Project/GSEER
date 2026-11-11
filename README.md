@@ -142,7 +142,7 @@ Connector register (verdicts enforced in code — see
 
 | Connector | What it gathers | Status |
 | --- | --- | --- |
-| `dns` | A/AAAA/CNAME answers for operator-named domains | **Operational** |
+| `dns` | A/AAAA/CNAME/MX/NS answers for operator-named domains | **Operational** |
 | `ptr` | reverse-DNS (PTR) names for operator-named addresses | **Operational** (v0.3.0) |
 | `ip2asn` | ASN / network-owner enrichment (Team Cymru free community service, DNS interface) | **Operational** |
 | `rdap` | RIR registration data | **Disabled** — provider terms do not grant indexing/redistribution yet |
