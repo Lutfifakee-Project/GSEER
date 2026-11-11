@@ -50,6 +50,8 @@ gseer
 #   → creates ~/.gseer/gseer.db (one SQLite file, 0600)
 #   → writes ~/.gseer/config.yaml
 #   → prints exactly what to do next
+# (Any engine command — search, source add, collect — initializes the
+#  same way when no config exists yet.)
 
 # 2. Verify the installation:
 gseer doctor

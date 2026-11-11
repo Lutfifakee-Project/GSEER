@@ -1,4 +1,4 @@
-# GSEER — Installation (v0.3.0)
+# GSEER — Installation (v0.3.1)
 
 ## Install method: `go install` (recommended)
 
@@ -10,10 +10,12 @@ go install -v github.com/Lutfifakee-Project/gseer/cmd/gseer@latest
 
 The binary lands in `$(go env GOPATH)/bin` — put that on your `PATH` if
 it is not.  Nothing else is required for personal mode: the first
-`gseer` run creates the single-file database and config automatically.
+`gseer` run creates the single-file database and config automatically
+(and so does the first engine command — `search`, `source add`,
+`collect run` — when no configuration exists yet).
 
 Pin a release instead of `@latest` when you want reproducibility, e.g.
-`go install github.com/Lutfifakee-Project/gseer/cmd/gseer@v0.3.0`.
+`go install github.com/Lutfifakee-Project/gseer/cmd/gseer@v0.3.1`.
 Note on `version` output: `go install` builds carry no VCS metadata, so
 `commit`/`built_at` read "unknown" — the version itself is correct.
 
@@ -27,11 +29,11 @@ Note on `version` output: `go install` builds carry no VCS metadata, so
 
 ```bash
 git clone https://github.com/Lutfifakee-Project/gseer.git
-cd GSEER
-make build VERSION=v0.2.0   # ./bin/gseer (version stamped via ldflags)
+cd gseer
+make build VERSION=v0.3.1   # ./bin/gseer (version stamped via ldflags)
 make tools                  # install golangci-lint + govulncheck
 make check                  # build + vet + lint + test + vuln
-./bin/gseer version         # expect: gseer v0.2.0
+./bin/gseer version         # expect: gseer v0.3.1
 ```
 
 The resulting `./bin/gseer` binary's SHA-256 can be printed with

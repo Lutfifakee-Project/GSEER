@@ -3,6 +3,50 @@
 All notable changes per release.  Format: Keep-a-Changelog-ish, newest
 first.  Versions follow semver (three-component).
 
+## [v0.3.1] — Install Path & First-Run Correctness (pending tag)
+
+Real-world acceptance testing found two correctness failures that CI
+could not see: the documented install command failed outright, and the
+first engine command on a fresh machine dead-ended in an unrelated
+configuration error.  Both are fixed; no check was weakened and no
+behavior was faked.
+
+### Fixed
+
+- **The exact documented install command now matches the module.**
+  `go.mod` declared the module path with an UPPERCASE repo segment
+  (`…/GSEER`) while every README/INSTALL/QUICKSTART command teaches the
+  lowercase form — and Go module paths are case-sensitive, so
+  `go install -v github.com/Lutfifakee-Project/gseer/cmd/gseer@latest`
+  failed with "module declares its path as … but was required as …".
+  The module declaration, all imports, the ldflags `-X` injections
+  (Makefile, Dockerfile, `.goreleaser.yaml`), and the doc URLs now use
+  the one lowercase path.  Verified with a clean-environment proxy
+  fetch of the fixed module (the negative control on the v0.3.0
+  artifact reproduces the reported error byte-for-byte).
+- **Zero-configuration first run covers every engine command.**  With
+  no configuration anywhere, the first `gseer search`, `gseer source
+  add`, `gseer collect`, `gseer suppress`, `gseer export`, or
+  `gseer db backup` failed with `E_CONFIG_REQUIRED: client.endpoint` —
+  presented to users exactly like "source/collect are rejected in
+  personal mode".  Engine commands now run the SAME personal-mode
+  initialization bare `gseer` uses (one code path, no drift) when
+  nothing is configured; an explicit `--profile`/env choice is never
+  overridden.  `search --validate`/`--explain` need no configuration
+  and provision nothing.  `doctor` on a fresh home reports the
+  zero-config state as a PASS note instead of a failing config check
+  (still strictly read-only).
+
+### Added
+
+- Regression tests driving the real binary through first-command
+  flows (`source add`/`search`/`suppress list`/`doctor`) and module
+  path guards that keep `go.mod`, the imports, and the docs on the
+  lowercase public path forever.
+- Docs corrected: `git clone` now says the real directory name
+  (`gseer`, not `GSEER` — the old form fails on case-sensitive
+  filesystems), build examples pin v0.3.1.
+
 ## [v0.3.0] — Zero-Config First Run, Personal Collection, New Identity
 
 Positioning rename: GSEER is the **internet-asset search engine** (the

@@ -1,4 +1,4 @@
-# GSEER — Quickstart (v0.3.0)
+# GSEER — Quickstart (v0.3.1)
 
 > Canonical fresh-install workflow.  Every command below was executed
 > against the real binary during the release-readiness rounds.  Two
@@ -13,6 +13,10 @@
 ## Path A — personal mode (zero-config)
 
 Install once, then run:
+
+> The first ENGINE command you run — bare `gseer`, `gseer search …`,
+> `gseer source add …` — initializes personal mode the same way when no
+> configuration exists yet.  Nothing to provision by hand.
 
 ```bash
 go install -v github.com/Lutfifakee-Project/gseer/cmd/gseer@latest
@@ -62,10 +66,10 @@ index and searches exactly what you collect into it.
 
 ```bash
 git clone https://github.com/Lutfifakee-Project/gseer.git
-cd GSEER
-make build VERSION=v0.2.0
+cd gseer
+make build VERSION=v0.3.1
 ./bin/gseer version
-#   gseer v0.2.0
+#   gseer v0.3.1
 # (optional: sudo cp bin/gseer /usr/local/bin/ so `gseer` is on PATH)
 ```
 
