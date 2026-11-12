@@ -377,6 +377,17 @@ func TestRestoreCloseFailureInjection(t *testing.T) {
 		t.Errorf("live database changed on a staging failure")
 	}
 	assertNoStagingLeft(t, dir)
+	// Regression (Windows CI run 43137495295): the injected close
+	// failure used to leave the staging HANDLE open — os.Remove then
+	// failed with a sharing violation, silently leaving a partial
+	// staging file whose open handle ALSO broke the test framework's
+	// t.TempDir cleanup ("The process cannot access the file because
+	// it is being used by another process").  After every injected
+	// failure the directory must be fully removable: no leaked handle
+	// may outlive the failed restore.
+	if rerr := os.RemoveAll(dir); rerr != nil {
+		t.Errorf("temp directory not removable after the injected close failure (an open handle leaked): %v", rerr)
+	}
 }
 
 // ---------------------------------------------------------------------------

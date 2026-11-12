@@ -13,6 +13,27 @@ behavior was faked.
 
 ### Fixed
 
+- **Windows CI: the restore's staging cleanup and the module-path guard are now Windows-correct.**  Two real windows-latest CI
+  failures, both invisible on POSIX: (1) on the injected
+  close-failure path, `copyFile` removed the partial staging file
+  while its handle was still open — Windows refuses to delete an
+  open file (sharing violation), so a leftover
+  `gseer.db.restore-staging` survived every simulated close failure
+  and even broke the test framework's temp-directory cleanup.  The
+  cleanup now releases the REAL handle first (deliberately not the
+  test seam whose injected failure is exactly what cleanup must
+  survive), removes the file only afterwards, and reports a removal
+  that still fails next to the primary error instead of silently
+  discarding it.  (2) the install-path guard compared go.mod's first
+  line byte-for-byte; a Windows `git clone` (core.autocrlf) ends
+  every text line with CR, so the guard rejected the CORRECT
+  declaration while printing two identical-looking lines.  Only the
+  CR artifact is stripped now — a BOM, wrong case, or any other
+  deviation still fails the guard (verified: the stale UPPERCASE
+  declaration is still caught under CRLF).  Both behaviors are
+  pinned by tests that were reproduced and re-run on a real
+  Windows runtime (windows/amd64 test binaries executing the
+  windows test suite), not by cross-compilation alone.
 - **The exact documented install command now matches the module.**
   `go.mod` declared the module path with an UPPERCASE repo segment
   (`…/GSEER`) while every README/INSTALL/QUICKSTART command teaches the

@@ -64,7 +64,14 @@ func TestGoModDeclaresLowercasePublicPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read go.mod: %v", err)
 	}
-	head := strings.SplitN(string(raw), "\n", 2)[0]
+	// The first line must equal the documented path byte for byte —
+	// except for the one artifact a Windows `git clone` (core.autocrlf)
+	// adds to EVERY text file: a trailing carriage return on the CRLF
+	// line ending.  Only that "\r" is stripped; any other difference
+	// (BOM, leading whitespace, a different path, wrong case) still
+	// fails, so the guard keeps detecting a genuinely incorrect module
+	// declaration.
+	head := strings.TrimSuffix(strings.SplitN(string(raw), "\n", 2)[0], "\r")
 	if head != wantModulePath {
 		t.Fatalf("go.mod must declare the documented public path\n got: %s\nwant: %s", head, wantModulePath)
 	}

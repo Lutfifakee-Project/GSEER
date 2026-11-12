@@ -137,7 +137,9 @@ func uniqueRestorePath(base string) (string, error) {
 // Error precedence: the first primary failure (open, copy, sync,
 // chmod) wins; the close error surfaces only when nothing earlier
 // failed, so cleanup never masks the operation's own error.  A failed
-// copy removes its own partial dst.
+// copy releases the handle even when the close itself failed, and
+// removes its own partial dst; a removal that still fails is REPORTED
+// together with the primary error, never silently discarded.
 func copyFile(src, dst string, mode os.FileMode) error {
 	in, err := restoreOpenSrc(src) //nolint:gosec // G304: operator-supplied backup/restore path is the feature
 	if err != nil {
@@ -157,7 +159,25 @@ func copyFile(src, dst string, mode os.FileMode) error {
 		copyErr = closeErr
 	}
 	if copyErr != nil {
-		_ = os.Remove(dst) // never leave a partial copy behind
+		// A FAILED close can leave the underlying handle OPEN (the
+		// seam in tests simulates it; a real EINTR/EIO close or a
+		// failed CloseHandle does it in production).  Removing an
+		// open file fails on Windows with a sharing violation, which
+		// used to silently leave a partial staging file behind.  The
+		// cleanup therefore releases the REAL handle first —
+		// out.Close(), deliberately NOT the seam, whose injected
+		// failure is exactly what the cleanup must survive — and
+		// only then removes the partial destination.  This second
+		// close is safe to call on an already-closed *os.File (it
+		// returns os.ErrClosed, an expected non-failure).  Its own
+		// error carries no recoverable information beyond what the
+		// Remove below surfaces: if the handle somehow survived, the
+		// Remove fails on Windows and THAT error is reported next to
+		// the primary one instead of being silently discarded.
+		_ = out.Close()
+		if rerr := os.Remove(dst); rerr != nil {
+			return fmt.Errorf("%w (cleanup: the partial staging file could not be removed and is still at %s: %v — it can be deleted once no process uses it)", copyErr, dst, rerr)
+		}
 		return copyErr
 	}
 	// The umask can only clear bits on the O_CREATE mode — re-assert
