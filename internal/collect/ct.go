@@ -28,11 +28,12 @@ package collect
 //
 // TERMS VERDICT — DISABLED (docs/SOURCES.md §A).  The provider publishes
 // no terms of use for automated access, and no statement granting
-// permission to index or re-publish its aggregation.  The operator
-// asserts copyright on the site; the underlying certificates are public
-// data, but GSEER's
-// directive is explicit: unclear permission for indexing/reuse keeps a
-// connector disabled.  The runner refuses it (E_SOURCE_TERMS) regardless
+// permission to index or re-publish its aggregation.  The copyright
+// notice shown on the provider's site is that provider's own claim over
+// its aggregation — never a GSEER ownership claim; the underlying
+// certificates are public data, but GSEER's directive is explicit:
+// unclear permission for indexing/reuse keeps a connector disabled.
+// The runner refuses it (E_SOURCE_TERMS) regardless
 // of any database row.  The implementation stays complete and
 // unit-tested; flipping Review() to reviewed-enabled is a one-line,
 // owner-visible change after the terms question is settled with the
