@@ -95,7 +95,7 @@ func TestRDAPConnectorFailsOnBootstrapMiss(t *testing.T) {
 	}
 }
 
-// ---- CT (crt.sh shape) ----
+// ---- CT (aggregation-service JSON shape) ----
 
 func TestCTConnectorParsesCertificates(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

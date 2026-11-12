@@ -16,10 +16,11 @@
 
 package collect
 
-// ip2asn_test.go — the Team Cymru parser tests.  The quoted TXT lines are
-// the PRODUCTION format captured live from the documented interfaces
-// (origin.asn.cymru.com / asn.cymru.com) in 2026-11 and keep their real
-// field shapes; they are fixtures of the wire format, not observations.
+// ip2asn_test.go — the IP-to-ASN parser tests.  The quoted TXT lines are
+// the PRODUCTION format captured live from the provider's documented
+// origin/AS-name DNS interfaces (docs/SOURCES.md §D) in 2026-11 and keep
+// their real field shapes; they are fixtures of the wire format, not
+// observations.
 
 import "testing"
 
@@ -112,7 +113,7 @@ func TestParseCymruOriginFixtures(t *testing.T) {
 	})
 }
 
-// TestReverseIPFixtures pins the reverse-DNS label orders both Cymru
+// TestReverseIPFixtures pins the reverse-DNS label orders both IP-to-ASN
 // interfaces expect (RFC 4291 §2.2 nibble order for IPv6).
 func TestReverseIPFixtures(t *testing.T) {
 	v4 := reverseIP("8.8.8.8")

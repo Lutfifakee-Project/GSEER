@@ -3,6 +3,13 @@
 All notable changes per release.  Format: Keep-a-Changelog-ish, newest
 first.  Versions follow semver (three-component).
 
+> Provider-identity policy: `docs/SOURCES.md` is the one official
+> provider register — external data providers are named only there,
+> because data provenance must be transparent.  Entries for shipped
+> releases are historical records and keep the provider mentions they
+> shipped with; pending sections and all active documentation follow
+> the register-only policy.
+
 ## [v0.3.1] — Install Path & First-Run Correctness (pending tag)
 
 Real-world acceptance testing found two correctness failures that CI
@@ -81,7 +88,7 @@ behavior was faked.
 - DNS/ip2asn regression hardening: nil and empty `net.MX`/`net.NS`
   answer entries, whitespace-only and malformed hostnames, and
   trailing-root-dot normalization are now pinned by tests; multi-line
-  Cymru origin answers (first line wins) and registry-only AS-name
+  IP-to-ASN origin answers (first line wins) and registry-only AS-name
   answers (stored organisation stays EMPTY — never the registry field)
   are pinned at the connector level.
 - **Harden `db restore` into an explicitly recoverable replacement.**

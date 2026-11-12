@@ -41,8 +41,8 @@ package collect
 // Terms verdict — reviewed-enabled.  DNS resolution is the normal
 // operation of a standard protocol against the operator's resolver; the
 // operator chooses the resolver (config "resolver", default the system's
-// — GSEER never hardcodes a third-party resolver).  Cloudflare/Google
-// public resolvers document standard usage as permitted; GSEER issues
+// — GSEER never hardcodes a third-party resolver).  Public resolver
+// services document standard usage as permitted; GSEER issues
 // ordinary recursive queries at conservative rates and caches answers
 // (the index IS the cache).  Full review: docs/SOURCES.md §C.
 

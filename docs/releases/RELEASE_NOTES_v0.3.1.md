@@ -93,13 +93,19 @@ moved, and no behavior was faked.
   Transparent Data Collection.**
 - The v0.3.0 brand policy is re-established: external data providers
   are named ONLY in `docs/SOURCES.md`, the data-source review
-  register.  Provider names that had drifted into the README connector
-  table, the CLI terms-review help, and connector verdict metadata are
-  genericized there again; rejected source categories in the register
-  are explained by rejection reason, not by vendor name.  Real
-  provider identity, collection method, provenance, terms,
-  restrictions, freshness, and limitations remain fully documented in
-  the register.
+  register — the one official provider register.  Provider names that
+  had drifted into the README connector table, the CLI terms-review
+  help, and connector verdict metadata are genericized there again;
+  rejected source categories in the register are explained by rejection
+  reason, not by vendor name.  Real provider identity, collection
+  method, provenance, terms, restrictions, freshness, and limitations
+  remain fully documented in the register.
+  Historical records — the shipped `CHANGELOG.md` sections and the
+  earlier release notes under `docs/releases/` — keep the provider
+  mentions they shipped with (they are records of their time, not
+  current positioning); code comments name the providers generically,
+  while the actual endpoints, wire-format fixtures and connector
+  behavior are untouched for correctness.
 - The restore example no longer says "atomic" (consistent with the
   recoverable-replacement wording everywhere else); stale
   v0.1.0/v0.2.0 version stamps and examples are updated to v0.3.1; and

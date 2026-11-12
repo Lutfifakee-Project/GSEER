@@ -138,8 +138,10 @@ gseer collect redrive --all                # re-ingest dead-lettered records
 gseer suppress add cidr 10.0.0.0/8 --reason "RFC1918"   # keep ranges out
 ```
 
-Connector register (verdicts enforced in code — see
-[`docs/SOURCES.md`](docs/SOURCES.md) for the full terms review):
+Connector register (verdicts enforced in code).
+[`docs/SOURCES.md`](docs/SOURCES.md) is the one official provider
+register — the only place external data providers are named, because
+provenance must be transparent — and carries the full terms review:
 
 | Connector | What it gathers | Status |
 | --- | --- | --- |

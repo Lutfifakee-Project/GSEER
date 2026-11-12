@@ -453,7 +453,7 @@ func TestIP2ASNConnectorEnriches(t *testing.T) {
 			return nil, &net.DNSError{Err: "no such host", IsNotFound: true}
 		})
 	txtNames["7.113.0.203."+ip2ASNDomainV4] = []string{"64500 | 203.0.113.0/24 | US | arin | 2002-04-23"}
-	// Live asn.cymru.com wire format: "AS | CC | registry | allocated | AS NAME"
+	// Live provider wire format: "AS | CC | registry | allocated | AS NAME"
 	// (name is field 5; captured from the production service 2026-11).
 	txtNames["AS64500."+asnNameDomain] = []string{"64500 | US | arin | 2002-04-23 | EXAMPLE-AS, US"}
 
@@ -477,7 +477,7 @@ func TestIP2ASNConnectorEnriches(t *testing.T) {
 }
 
 // TestIP2ASNConnectorMultiLineAnswerUsesFirstLine pins the multi-answer
-// behavior: origin.asn.cymru.com can answer with several origin lines
+// behavior: the origin interface can answer with several origin lines
 // for one address; the connector enriches from the FIRST line (the
 // most specific origin) and audits nothing — a regression here would
 // silently enrich assets from the wrong origin.
@@ -556,7 +556,7 @@ func TestIP2ASNConnectorHandlesUnknownIPAndBadAnswer(t *testing.T) {
 			return nil, &net.DNSError{Err: "no such host", IsNotFound: true}
 		})
 	// 203.0.113.8 → no answer; 203.0.113.9 → garbage answer.
-	raws["9.113.0.203."+ip2ASNDomainV4] = []string{"not a cymru line"}
+	raws["9.113.0.203."+ip2ASNDomainV4] = []string{"not a provider line"}
 
 	b, err := ip2asnConnector{}.Collect(ctxFor(SourceConfig{
 		SeedMode: "config", Seeds: []string{"203.0.113.8", "203.0.113.9"}}))

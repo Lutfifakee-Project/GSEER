@@ -17,19 +17,20 @@
 package collect
 
 // ip2asn.go — the ASN/BGP enrichment connector (v0.0.2 P1), backed by
-// Team Cymru's IP-to-ASN mapping service over its DNS interfaces.
+// the public IP-to-ASN mapping community service over its DNS
+// interfaces (provider identity, endpoints and terms: docs/SOURCES.md §D).
 //
 // WHAT IT DOES: for IP assets the operator's index already holds (seed_mode
-// "index") or the operator names in config, it asks Team Cymru's
-// IP-to-ASN DNS service for the origin ASN, prefix, country and registry,
+// "index") or the operator names in config, it asks the IP-to-ASN
+// DNS service for the origin ASN, prefix, country and registry,
 // plus the AS name from the companion ASN interface — and writes the
 // answer as an ENRICHMENT fact on that same IP asset (asn / asn_org /
 // geo_country columns; raw answer lines preserved in evidence).
 //
-// Terms verdict — reviewed-enabled.  Team Cymru publishes the service as
-// "Free, forever" community infrastructure and asks volume users to use
-// the bulk or DNS interfaces ("The only ask is that you use bulk mode or
-// DNS at volume").  GSEER uses the DNS interface (the lighter of the two),
+// Terms verdict — reviewed-enabled.  The service is published as a free
+// community service, and volume users are asked to use the bulk or DNS
+// interfaces; the register quotes the published terms verbatim.  GSEER
+// uses the DNS interface (the lighter of the two),
 // issues one lookup per identifier (answered lookups are cached by the
 // index — re-runs dedupe at L2 and re-ask only fresh seeds), and caps
 // runs through limit_per_run.  Full review: docs/SOURCES.md §D.
@@ -48,7 +49,7 @@ import (
 	"github.com/Lutfifakee-Project/gseer/internal/suppress"
 )
 
-// Team Cymru DNS interface bases (docs/SOURCES.md §D; overridable in
+// Provider DNS interface bases (docs/SOURCES.md §D; overridable in
 // config only for tests — production defaults are the documented ones).
 const (
 	ip2ASNDomainV4 = "origin.asn.cymru.com"
@@ -199,11 +200,12 @@ func parseCymruOrigin(line string) (cymruOrigin, error) {
 	return out, nil
 }
 
-// parseCymruASName extracts the AS name from an asn.cymru.com TXT line
-// defensively.  The documented live format is FIVE pipe-separated fields
-// (verified against the production service 2026-11):
+// parseCymruASName extracts the AS name from the AS-name DNS
+// interface's TXT answer defensively.  The documented live format is
+// FIVE pipe-separated fields (verified against the production service
+// 2026-11):
 //
-//	"AS15169 | US | arin | 2000-03-30 | GOOGLE - Google LLC, US"
+//	"AS64500 | US | arin | 2000-03-30 | EXAMPLE-AS - Example Org, US"
 //	  ASN    | CC | registry | allocated | AS NAME
 //
 // so the name is the FIFTH field.  Anything else — fewer fields, an
@@ -225,7 +227,7 @@ func ip2ASNDomainOf(addr string) string {
 	return ip2ASNDomainV4
 }
 
-// reverseIP renders the address in the DNS-name order Team Cymru's
+// reverseIP renders the address in the DNS-name order the IP-to-ASN
 // interfaces expect: IPv4 octets reversed ("203.0.113.7" →
 // "7.113.0.203"); IPv6 nibbles reversed (RFC 4291 §2.2 ip6.arpa order).
 func reverseIP(addr string) string {

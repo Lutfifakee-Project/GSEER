@@ -17,18 +17,20 @@
 package collect
 
 // ct.go — the Certificate Transparency connector (v0.0.2 P1), backed by
-// the crt.sh JSON API operated by Sectigo.
+// the certificate-transparency aggregation service's JSON API (provider
+// identity, endpoint and terms: docs/SOURCES.md §A).
 //
 // WHAT IT WOULD DO: for domain/hostname identifiers the operator or the
-// index already names, query crt.sh for logged certificates covering
-// those names and record every distinct DNS name in the answers as a
-// hostname/domain discovery fact (issuer, validity window, crt.sh id in
-// evidence).
+// index already names, query the aggregation service for logged
+// certificates covering those names and record every distinct DNS name
+// in the answers as a hostname/domain discovery fact (issuer, validity
+// window, aggregation record id in evidence).
 //
-// TERMS VERDICT — DISABLED (docs/SOURCES.md §A).  crt.sh publishes no
-// terms of use for automated access, and no statement granting permission
-// to index or re-publish its aggregation.  Sectigo asserts copyright on
-// the site; the underlying certificates are public data, but GSEER's
+// TERMS VERDICT — DISABLED (docs/SOURCES.md §A).  The provider publishes
+// no terms of use for automated access, and no statement granting
+// permission to index or re-publish its aggregation.  The operator
+// asserts copyright on the site; the underlying certificates are public
+// data, but GSEER's
 // directive is explicit: unclear permission for indexing/reuse keeps a
 // connector disabled.  The runner refuses it (E_SOURCE_TERMS) regardless
 // of any database row.  The implementation stays complete and
@@ -45,7 +47,7 @@ import (
 	"github.com/Lutfifakee-Project/gseer/internal/suppress"
 )
 
-// Default crt.sh endpoint (overridden in tests).
+// Default CT-aggregation endpoint (overridden in tests).
 const ctDefaultEndpoint = "https://crt.sh/"
 
 // ctConnector implements the (disabled) CT discovery connector.
@@ -63,7 +65,7 @@ func (ctConnector) Review() Review {
 	}
 }
 
-// ctEntry is the subset of a crt.sh JSON record GSEER consumes.
+// ctEntry is the subset of the aggregation service's JSON record GSEER consumes.
 type ctEntry struct {
 	IssuerName   string `json:"issuer_name"`
 	CommonName   string `json:"common_name"`
@@ -74,7 +76,7 @@ type ctEntry struct {
 	ID           int64  `json:"id"`
 }
 
-// Collect implements Collector: per-seed crt.sh queries, one batch.
+// Collect implements Collector: per-seed aggregation queries, one batch.
 // Unreachable in production while the verdict is "disabled"; tests drive
 // it through httptest endpoints.
 func (ctConnector) Collect(ctx Ctx) (*Batch, error) {
@@ -158,7 +160,7 @@ func (ctConnector) Collect(ctx Ctx) (*Batch, error) {
 	}, nil
 }
 
-// ctNames extracts the DNS names one crt.sh record covers (name_value is
+// ctNames extracts the DNS names one aggregation record covers (name_value is
 // newline-separated and may include wildcards; common_name is a fallback).
 func ctNames(e ctEntry) []string {
 	var out []string

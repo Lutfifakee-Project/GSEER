@@ -19,19 +19,20 @@ package collect
 // rdap.go — the RDAP registration-data connector (v0.0.2 P1).
 //
 // WHAT IT WOULD DO: for IP assets already in the operator's index, query
-// the responsible RIR's RDAP endpoint (discovered through the IANA RDAP
-// bootstrap registry) and record the network object's country, name,
+// the responsible RIR's RDAP endpoint (discovered through the RFC 9224
+// RDAP bootstrap registry) and record the network object's country, name,
 // handle and address range as enrichment.
 //
 // TERMS VERDICT — DISABLED (docs/SOURCES.md §B).  The RIR registration
-// data services carry restrictive terms: ARIN's Whois/RDAP Terms of Use
-// permit querying only for enumerated purposes and state that "no other
-// use of the Whois Service other than as expressly described in these
-// Terms is implied or permitted" absent prior written authorization, and
-// prohibit republishing/making the data publicly available; RIPE NCC's
-// terms prohibit re-packaging, compiling and re-distributing RIPEstat /
-// registration data.  Indexing the answers into a GSEER search index is
-// redistribution the terms do not grant.  Per the owner directive ("if a
+// data services carry restrictive terms: the registries' Whois/RDAP
+// terms permit querying only for enumerated purposes, reserve every
+// other use absent prior written authorization, and prohibit
+// republishing/making the data publicly available; several registries
+// additionally prohibit re-packaging, compiling and re-distributing
+// registration data.  The register records the per-registry terms
+// verbatim (docs/SOURCES.md §B).  Indexing the answers into a GSEER
+// search index is redistribution the terms do not grant.  Per the owner
+// directive ("if a
 // provider requires unavailable credentials, payment, or unclear
 // permission for indexing/reuse, keep that connector disabled"), the
 // runner REFUSES this connector (E_SOURCE_TERMS) regardless of any
@@ -47,7 +48,8 @@ import (
 	"github.com/Lutfifakee-Project/gseer/internal/suppress"
 )
 
-// Default RDAP bootstrap endpoints (IANA).  Vars, not consts, only so
+// Default RDAP bootstrap endpoints (the RFC 9224 bootstrap
+// registries).  Vars, not consts, only so
 // integration tests can point them at a local httptest server — the
 // production defaults are exactly these values.
 var (
@@ -70,7 +72,7 @@ func (rdapConnector) Review() Review {
 	}
 }
 
-// rdapBootstrap is the IANA bootstrap file shape (RFC 9224).
+// rdapBootstrap is the RDAP bootstrap file shape (RFC 9224).
 type rdapBootstrap struct {
 	Description string    `json:"description"`
 	Services    [][]any   `json:"services"` // [ [cidr|tld...], [urls...] ]
@@ -171,7 +173,7 @@ func (rdapConnector) Collect(ctx Ctx) (*Batch, error) {
 	return &Batch{Raws: raws, Done: true, Notes: map[string]int{"seeds": len(seeds)}}, nil
 }
 
-// rdapEndpoints fetches the IANA bootstrap files and returns the first
+// rdapEndpoints fetches the RDAP bootstrap files and returns the first
 // RDAP endpoint matching the v4/v6 address spaces GSEER may enrich.
 // (Per-seed prefix matching is overkill for the five RIRs: the bootstrap
 // service lists cover the whole space, and the first URL of the matching
