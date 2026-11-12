@@ -218,15 +218,20 @@ does not start at all.
 | 1 | Generic error returned by a command's error path (formatted per the error style guide; the specific classes below exit 2/3/4/5) |
 | 2 | Invalid query / invalid input (`E_QUERY_*`) |
 | 3 | Configuration failure (`E_CONFIG*`, non-loopback bind without token, missing runtime credential) |
-| 4 | Service unavailable (endpoint/DB/index; audit could not run) — exercised by the source/collect DB-unreachable paths |
+| 4 | Service unavailable (endpoint/DB/index; audit could not run) — exercised by `search` against a dead database or a missing index, the client-profile endpoint-refusal paths, `doctor` check failures, and `source`/`collect` query failures after the store opened (a DB that is unreachable at open fails the pre-query reachability gate and exits 1 — the generic error path) |
 | 5 | Security/privilege refusal: failed privilege audit, runtime-credential identity mismatch — and (client profile) a 401 from a token-protected API |
 | 64 | Usage error / planned-command pointer (`gseer scan`, `gseer asset`) |
 | 70 | Internal error |
 
 Reproduced live this cycle against PostgreSQL 16.15 with the v0.3.1
-binary: 0 (zero-result search), 1 (`collect status` against a dead
-database), 2 (`search --validate` parse refusal), 3 (missing runtime
-credential), 5 (runtime-credential mismatch and revoked-grant audit
+binary: 0 (zero-result search), 1 (`collect status`, `source list` and
+`collect run --all` against a dead database — these data-plane commands
+refuse at the pre-query reachability gate with `E_DB_UNREACHABLE` and
+take the generic error path), 2 (`search --validate` parse refusal),
+3 (missing runtime credential), 4 (`search` and `doctor` against a
+dead database, and `collect status` / `source list` / `collect run
+--all` query failures against a reachable database whose schema is not
+provisioned), 5 (runtime-credential mismatch and revoked-grant audit
 failure), and 64 (`gseer scan` pointer).
 
 - **Common refusals and the safe repair:**
