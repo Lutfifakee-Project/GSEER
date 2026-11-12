@@ -77,7 +77,7 @@ func ParseMode(s string) (Mode, error) {
 	return 0, &Error{
 		Code:   CodePlanMode,
 		Detail: fmt.Sprintf("unknown search mode %q", s),
-		Why:    "v0.0.1 ships two modes: service (default, PD-1) and asset",
+		Why:    "GSEER ships two modes: service (default, PD-1) and asset",
 		Next:   "try: --mode service   or   --mode asset",
 	}
 }

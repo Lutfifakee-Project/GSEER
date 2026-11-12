@@ -52,6 +52,12 @@ behavior was faked.
   the one lowercase path.  Verified with a clean-environment proxy
   fetch of the fixed module (the negative control on the v0.3.0
   artifact reproduces the reported error byte-for-byte).
+  Transitional reality (verified this cycle): the documented `@latest`
+  form still errors until the v0.3.1 tag is published, because tag
+  resolution picks the v0.3.0 tag — its `go.mod` is the UPPERCASE path
+  this release fixes; `@main` installs cleanly from the proxy today
+  (honest "unknown" VCS fields), and `@latest` resolves v0.3.1 by the
+  same rule once it is the latest tag.
 - **Zero-configuration first run covers every engine command.**  With
   no configuration anywhere, the first `gseer search`, `gseer source
   add`, `gseer collect`, `gseer suppress`, `gseer export`, or
@@ -64,6 +70,14 @@ behavior was faked.
   and provision nothing.  `doctor` on a fresh home reports the
   zero-config state as a PASS note instead of a failing config check
   (still strictly read-only).
+- **Stale version anchors removed from user-facing error surfaces.**
+  On a v0.3.1 binary, `gseer scan`/`gseer asset` still printed
+  "planned, not in this release (v0.1.0)", the reserved
+  `search --collapse` help and pointer line said "PLANNED for v0.1.0",
+  and the GQL planner/validator refusal explanations still said
+  "v0.0.1 ships …" / "v0.0.1 quantifies …".  All now describe the
+  running product without a wrong release stamp; messages, exit codes,
+  and refusal semantics are otherwise unchanged (text-only).
 
 ### Added
 
@@ -133,6 +147,22 @@ behavior was faked.
   themselves); `docs/QUICKSTART.md` now documents exactly what
   `db restore` guarantees, where the previous database is preserved,
   and how the operator recovers from a failed or wrong-file restore.
+- Docs re-synced to v0.3.1 (the earlier "stale stamps updated" sweep
+  had missed two files): `docs/DEPLOYMENT.md`'s evidence classes now
+  cite the v0.3.1 binary — hardened order, doctor `6 PASS`, startup
+  gates exit 3/5/5, exit-code table 0/1/2/3/5/64 reproduced live on
+  PostgreSQL 16.15 this cycle — instead of the v0.2.0 round, and the
+  exit-code table gains the honest generic exit-1 row;
+  `docs/UPDATE.md` manifest examples use the current version, the
+  channel note is present-tense, and its section numbering is
+  contiguous (§6, not a jump to §8); `README.md`'s troubleshooting now
+  separates the client-profile `E_CLIENT_ONLY` refusal from personal
+  mode's `E_PROFILE_UNSUPPORTED` on `gseer host` (self-hosted-only in
+  this release — the old row implied host works in personal mode); the
+  QUICKSTART first-run sample now shows the real four-line output; and
+  `docs/INSTALL.md` + `README.md` document the transitional `@latest`
+  state (tag resolution picks v0.3.0's UPPERCASE `go.mod` until the
+  v0.3.1 tag exists; `@main` verified as the interim install).
 
 ### Verified (release evidence)
 
@@ -143,12 +173,17 @@ behavior was faked.
   isolated home (49/49 assertions).
 - Windows: the two CI failures are fixed and the full
   `go test -count=1 ./...` suite passes on windows-latest — first green
-  on the fix commit (CI run 43153349926), re-confirmed on this exact
-  pending-release commit by GitHub Actions run #32
-  (https://github.com/Lutfifakee-Project/gseer/actions/runs/43163565189):
-  Go 1.26.x/1.27.x build & test, the windows full-suite job, lint,
-  govulncheck, the goreleaser release-config check, Search ≠ Scan, and
-  the PostgreSQL 16/17 integrations all green.
+  on the fix commit (CI run 43153349926), re-confirmed on the
+  release-content commit by GitHub Actions run #32
+  (https://github.com/Lutfifakee-Project/gseer/actions/runs/43163565189)
+  and on the metadata parent of this candidate by run #33
+  (https://github.com/Lutfifakee-Project/gseer/actions/runs/43184608744)
+  — all ten jobs green in both (Go 1.26.x/1.27.x build & test, the
+  windows full-suite job, lint, govulncheck, the goreleaser
+  release-config check, Search ≠ Scan, and the PostgreSQL 16/17
+  integrations).  The pending-release commits after run #33 change
+  only docs and error-message text; the final tree is covered by the
+  local battery in the other bullets of this list.
 - Cross-compilation of all release targets succeeds.
 
 ## [v0.3.0] — Zero-Config First Run, Personal Collection, New Identity

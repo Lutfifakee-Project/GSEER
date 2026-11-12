@@ -516,7 +516,7 @@ func (v *validator) visitQuantified(q *ast.Quantified) error {
 		return &Error{
 			Code:   CodeScope,
 			Detail: fmt.Sprintf("unknown quantifier scope %q at line %d, column %d", q.Field, line, col),
-			Why:    "v0.0.1 quantifies over host (the asset and its services) or service (the search row)",
+			Why:    "GSEER quantifies over host (the asset and its services) or service (the search row)",
 			Next:   "try: ANY(host){ ... }   or   ANY(service){ ... }",
 			Line:   line, Col: col,
 		}
@@ -525,7 +525,7 @@ func (v *validator) visitQuantified(q *ast.Quantified) error {
 		return &Error{
 			Code:   CodeUnsupported,
 			Detail: fmt.Sprintf("ALL(...) is not supported in this version at line %d, column %d", line, col),
-			Why:    "v0.0.1 ships the ANY quantifier only (ADR-0014; the ALL semantics need the v0.1.0 asset-granular mode)",
+			Why:    "GSEER ships the ANY quantifier only (ADR-0014; the ALL semantics need the asset-granular mode)",
 			Next:   "rewrite with ANY: ANY(" + q.Field + "){ " + q.Body.String() + " } — and negate if you meant 'no service matches'",
 			Line:   line, Col: col,
 		}

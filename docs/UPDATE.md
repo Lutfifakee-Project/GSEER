@@ -52,12 +52,13 @@ The manifest location comes from `update.manifest_url` (config file) or
 `GSEER_UPDATE_MANIFEST_URL`.  Without a configured channel the command
 fails with `E_UPDATE_NO_CHANNEL` and a pointer here.
 
-**v0.1.0 channel note.** The signed-update *mechanism* is implemented and
-shipped in v0.1.0, but GSEER does **not** host an official manifest or
-update feed for this release. There is no default `GSEER_UPDATE_MANIFEST_URL`
-and no `gseer update --check` success out of the box: a fresh install has
-no active channel until the operator provides and configures their own
-manifest URL (signed with the key embedded in the binary, per §3–§4).
+**Update channel note (v0.3.1).** The signed-update *mechanism* is
+implemented and shipped (since v0.1.0), but GSEER does **not** host an
+official manifest or update feed: there is no default
+`GSEER_UPDATE_MANIFEST_URL` and no `gseer update --check` success out of
+the box: a fresh install has no active channel until the operator
+provides and configures their own manifest URL (signed with the key
+embedded in the binary, per §3–§4).
 Until then, `gseer update` refuses with `E_UPDATE_NO_CHANNEL` — which is
 intentional: GSEER never downloads or applies updates from an unconfigured,
 unverified source.
@@ -76,14 +77,14 @@ gseer server start
 
 ```json
 {
-  "version": "v0.1.1",
+  "version": "v0.3.1",
   "released_at": "2026-11-03T00:00:00Z",
   "artifacts": [
     {"os": "linux", "arch": "amd64",
-     "url": "https://download.example/gseer-v0.1.1-linux-amd64",
+     "url": "https://download.example/gseer-v0.3.1-linux-amd64",
      "sha256": "<64 hex>", "size": 38777344}
   ],
-  "notes_url": "https://github.com/.../releases/tag/v0.1.1",
+  "notes_url": "https://github.com/.../releases/tag/v0.3.1",
   "signature": "<base64 Ed25519 over the canonical core bytes>"
 }
 ```
@@ -108,7 +109,7 @@ Per release:
 
 ```bash
 # 1. compute artifact hashes
-sha256sum gseer-v0.1.1-linux-amd64 gseer-v0.1.1-darwin-arm64 ...
+sha256sum gseer-v0.3.1-linux-amd64 gseer-v0.3.1-darwin-arm64 ...
 # 2. write manifest.json (version, released_at, artifacts, notes_url)
 # 3. sign
 go run ./cmd/gseer-release sign -key gseer-update.key -in manifest.json -out manifest.signed.json
@@ -144,7 +145,7 @@ anchor rotation can never strand an installation mid-update.
   prove an update is an upgrade.  Release builds stamp the version via
   `-ldflags` (Makefile).
 
-## 8. Upgrading a v0.1.0 deployment to v0.2.0 (bare-metal, EU-6)
+## 6. Upgrading a v0.1.0 deployment to v0.2.0 (bare-metal, EU-6)
 
 The signed-update channel is for BINARY updates; the v0.1.0 → v0.2.0
 upgrade is a source + schema upgrade.  The path is automated by the

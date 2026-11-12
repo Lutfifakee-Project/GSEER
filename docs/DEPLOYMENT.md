@@ -14,10 +14,13 @@ model. It covers three things operators keep asking about:
 
 Every claim carries an evidence class:
 
-- **VERIFIED (real binary)** — exercised against the v0.2.0 binary in
-  this repository during the release-readiness round (PostgreSQL 16.15
-  and 17.2, fresh databases on both, plus a v0.1.0 → v0.2.0 upgrade
-  rehearsal).
+- **VERIFIED (real binary)** — exercised against the v0.3.1 binary in
+  this repository during the v0.3.1 release-readiness rounds
+  (PostgreSQL 16.15 live this cycle: the full hardened order → doctor
+  6 PASS → startup gates → health → stop; PostgreSQL 17.11: the
+  `-tags integration` battery, 24/24 packages; earlier rounds verified
+  PostgreSQL 16.15 and 17.2 end-to-end the same way, plus a v0.1.0 →
+  v0.2.0 upgrade rehearsal).
 - **OWNER-APPROVED CONTRACT** — normative decisions OD-1…OD-7 from the
   owner's task book of 2026-11-05, implemented in this release as
   approved. The five Rev 6.7.2 SQL artifacts are embedded byte-for-byte
@@ -27,11 +30,12 @@ Every claim carries an evidence class:
 
 ## 1. Which model am I running?
 
-v0.2.0 ships **only** the hardened model — the v0.1.0 single-credential
-model was its development baseline and remains runnable by the v0.1.0
-binary on an unchanged `GSEER_DB_*` configuration.
+The hardened model shipped in v0.2.0 and is unchanged through v0.3.1 —
+the v0.1.0 single-credential model was its development baseline and
+remains runnable by the v0.1.0 binary on an unchanged `GSEER_DB_*`
+configuration.
 
-| Aspect | v0.2.0 hardened model — VERIFIED |
+| Aspect | Hardened model (shipped v0.2.0, unchanged in v0.3.1) — VERIFIED (v0.3.1 binary) |
 | --- | --- |
 | Database roles | **Three**: the operator credential (whatever the DSN names; database owner / migration executor), `gseer_policy_owner` (NOLOGIN; owns the suppression-policy layer), and `gseer_app` (LOGIN; the **only** credential the server uses at runtime, least-privilege). |
 | Schema migration | Embedded migrations 0001–0006 + **0016** (`gseer_policy` enforcement layer; refusal-first) + **0017** (search safe-casts). Versions 0007–0015 are permanently reserved (OD-4) — they do not exist and never will. Applied by `gseer setup --self-hosted` under the operator credential. |
@@ -107,7 +111,7 @@ boundary (the script is the normative source):
 | `SELECT` on the search views (`latest_http`, `latest_tls`, `latest_fingerprints`, `search_index`) and `EXECUTE` on the three `gseer_policy` suppression functions | `SUPERUSER` / `CREATEDB` / `CREATEROLE` / `BYPASSRLS` — the bootstrap script refuses to create or keep a role with any of these |
 
 Suppression writes go through the policy functions in every code path
-(v0.2.0): `gseer suppress add|remove` call
+(since v0.2.0): `gseer suppress add|remove` call
 `gseer_policy.suppression_insert` / `suppression_delete` inside one
 transaction that first takes the same advisory lock the 0016 statement
 trigger takes (the GSER/POL1 keys, OD-6) — which is what keeps the
@@ -208,15 +212,22 @@ does not start at all.
   config key that skips the gate.
 - **Exit code 5 = security/privilege refusal.** The stable table:
 
-| Code | Meaning (v0.2.0 binary) |
+| Code | Meaning (v0.3.1 binary) |
 | --- | --- |
 | 0 | Success (including a zero-result search) |
+| 1 | Generic error returned by a command's error path (formatted per the error style guide; the specific classes below exit 2/3/4/5) |
 | 2 | Invalid query / invalid input (`E_QUERY_*`) |
 | 3 | Configuration failure (`E_CONFIG*`, non-loopback bind without token, missing runtime credential) |
-| 4 | Service unavailable (endpoint/DB/index; audit could not run) |
+| 4 | Service unavailable (endpoint/DB/index; audit could not run) — exercised by the source/collect DB-unreachable paths |
 | 5 | Security/privilege refusal: failed privilege audit, runtime-credential identity mismatch — and (client profile) a 401 from a token-protected API |
 | 64 | Usage error / planned-command pointer (`gseer scan`, `gseer asset`) |
 | 70 | Internal error |
+
+Reproduced live this cycle against PostgreSQL 16.15 with the v0.3.1
+binary: 0 (zero-result search), 1 (`collect status` against a dead
+database), 2 (`search --validate` parse refusal), 3 (missing runtime
+credential), 5 (runtime-credential mismatch and revoked-grant audit
+failure), and 64 (`gseer scan` pointer).
 
 - **Common refusals and the safe repair:**
 
@@ -252,7 +263,11 @@ by fixing the deployment, never by re-interpreting the check.
 
 ---
 
-## 4. Startup gates in the v0.2.0 binary — VERIFIED
+## 4. Startup gates in the v0.3.1 binary — VERIFIED
+
+Live this cycle: gates 3–5 reproduce their refusals with exit 3/5/5
+against PostgreSQL 16.15 (missing runtime credential, operator-DSN
+mismatch, revoked `assets` grant).
 
 The gates `gseer server start` applies, in order:
 
@@ -311,20 +326,21 @@ provisioning is safe (everything is idempotent) but unnecessary.
 
 ## 6. PostgreSQL version policy
 
-- **v0.2.0 floor: PostgreSQL 16** (OD-7, owner-approved). `gseer
+- **Floor since v0.2.0: PostgreSQL 16** (OD-7, owner-approved). `gseer
   setup` and `gseer doctor` enforce and report it
   (`PG version: PostgreSQL N (minimum 16)`); the pinned migrations
   carry their own PG16 floor guards. The Rev 6.7.2 privilege model
   (membership `SET`/`INHERIT` options, the closure-walking audit) is
   only expressible on PG16+.
-- **Verified (release-readiness round, real binary + full integration
-  suite): PostgreSQL 16.15 and 17.2** — hardened setup → doctor
-  (`6 PASS, 0 FAIL`) → fixtures → search/facets/export/host →
-  suppress (policy functions) → server start (audit under
-  `gseer_app`) → health → stop all pass on both; the
-  `-tags integration` suites pass on both; the v0.1.0 → v0.2.0
-  upgrade path (ledger `(6, false)` → `(17, false)`) is an automated
-  test.
+- **Verified (v0.3.1 release-readiness rounds, real v0.3.1 binary +
+  full integration suite): PostgreSQL 16.15** — hardened setup →
+  doctor (`6 PASS, 0 FAIL`) → startup gates (mismatch/missing/audit-
+  failure refusals exit 5/3/5) → server start (audit under
+  `gseer_app`) → health → stop all pass live this cycle; the
+  `-tags integration` battery passes on **16.15 and 17.11** (24/24
+  packages on each); earlier rounds verified 16.15 and 17.2 end-to-end
+  the same way, and the v0.1.0 → v0.2.0 upgrade path (ledger
+  `(6, false)` → `(17, false)`) is an automated test.
 - **v0.1.0 (historical):** floor was PostgreSQL 15 (PD-8), retained by
   the v0.1.0 binary.
 
@@ -346,13 +362,15 @@ provisioning is safe (everything is idempotent) but unnecessary.
   `sources`/facets.
 - Suppression IDENTITY sequence gaps are cosmetic (migration 0016's
   in-migration refusal probes consume sequence values; register R7).
-- v0.2.0 is a source-only release: no prebuilt binaries, no published
-  image, no hosted update manifest, no hosted/global dataset, and no
+- **No published prebuilt channel yet** (still true for v0.3.1,
+  pending tag): the goreleaser pipeline is draft-gated — it produces
+  artifacts only on a tag push and nothing is published automatically;
+  there is no hosted update manifest, no hosted/global dataset, and no
   public search service (docs/ROADMAP.md). `gseer update` verifies
   Ed25519-signed manifests, but no hosted channel exists yet — the
   updater stays honest about an unconfigured/unreachable channel.
 - Binary distribution (reproducible release channel with published
-  checksums) is the EU-3 roadmap item; `make build` is reproducible
-  today (two fresh-clone builds produce identical hashes when built
-  with the same toolchain and flags), but nothing prebuilt is
-  published.
+  checksums) remains the EU-3 roadmap item; `make build` is
+  reproducible today (two fresh-clone builds produce identical hashes
+  when built with the same toolchain and flags), but nothing prebuilt
+  is published yet.

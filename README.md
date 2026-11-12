@@ -36,6 +36,12 @@ go install -v github.com/Lutfifakee-Project/gseer/cmd/gseer@latest
 That is the whole install. The binary lands in `$(go env GOPATH)/bin` — make
 sure that directory is on your `PATH`.
 
+> Until the v0.3.1 tag is published, that `@latest` form errors out (tag
+> resolution picks the v0.3.0 tag, whose `go.mod` still declares the
+> UPPERCASE module path — the exact mismatch v0.3.1 fixes). Interim:
+> `go install -v github.com/Lutfifakee-Project/gseer/cmd/gseer@main` or
+> build from source. Details: [`docs/INSTALL.md`](docs/INSTALL.md).
+
 Requirements for the default (personal) mode: **none beyond Go-built
 binary**. No database server, no Docker, no config files to write.
 
@@ -206,7 +212,8 @@ Every command has `--help`; `gseer --help` lists the live command set
 | --- | --- |
 | `commit: unknown` / `built_at: unknown` in `gseer version` | Normal for `go install` builds — module downloads carry no VCS metadata. Version is still correct; release binaries from GitHub Releases carry both fields. |
 | `E_CONFIG_REQUIRED: client.endpoint …` | Your shell resolves to the client profile. Run `gseer` once to initialize personal mode, or `gseer setup --personal`. |
-| `E_CLIENT_ONLY` on `server start` / `host` | That command needs a local profile. Personal mode keeps the search engine local; `server start` is a self-hosted-profile command. |
+| `E_CLIENT_ONLY` on `server start` / `host` | Your shell is in the `client` profile (no local database configured). Run `gseer` once to initialize personal mode, or export the self-hosted credentials (section 8). |
+| `E_PROFILE_UNSUPPORTED` on `host` | `gseer host` is self-hosted-only in this release — the host report runs through the PostgreSQL service. Personal mode covers search, export, suppression, backup, and collection; search the identifier instead (`gseer search '<value>'`). |
 | `E_SOURCE_TERMS` when enabling/running a source | That connector's provider terms are not cleared for automated collection (`docs/SOURCES.md`). This is a policy gate, not a bug. |
 | `E_QUERY_*` on search/facets | The GQL did not validate. The error names the position and a `Try:` fix; `gseer search '<q>' --validate` checks without touching the DB. |
 | Doctor reports `HINT index: EMPTY` | Normal on a fresh install. Load fixtures for evaluation, or register a source and run `gseer collect run`. |

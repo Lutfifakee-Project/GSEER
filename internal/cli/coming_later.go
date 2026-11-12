@@ -59,7 +59,7 @@ func registerComingLaterCmds(root *cobra.Command) {
 				// exitFunc (the process-exit seam shared with search.go)
 				// keeps this testable.
 				_, _ = fmt.Fprintf(cmd.ErrOrStderr(),
-					"E_NOT_IMPLEMENTED: \"gseer %s\" is planned, not in this release (v0.1.0).\n",
+					"E_NOT_IMPLEMENTED: \"gseer %s\" is planned, not in this release.\n",
 					cmd.Name())
 				switch cmd.Name() {
 				case "scan":

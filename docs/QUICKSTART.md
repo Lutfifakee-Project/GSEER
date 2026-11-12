@@ -24,6 +24,7 @@ gseer
 #   Welcome to GSEER — internet-asset search engine.
 #   [ ok  ] personal database: ~/.gseer/gseer.db      (one SQLite file, 0600)
 #   [ ok  ] migrations: schema at head v1 (AT_HEAD)
+#   [ ok  ] new database file created with 0600 permissions
 #   [ ok  ] config written: ~/.gseer/config.yaml (profile=personal)
 gseer doctor
 #   4 PASS, 0 FAIL — index reported EMPTY (that is honest)

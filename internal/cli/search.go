@@ -146,7 +146,7 @@ is strict — port==443, not port=="443").`,
 	cmd.Flags().StringSliceVar(&fFields, "fields", nil, "projection fields (default: all search_index columns)")
 	// --collapse is reserved: registered, help-marked "planned", invocation
 	// exits 64 per SPEC-03 §3 (design at v0.1.0, D-13).
-	cmd.Flags().BoolVar(&fCollapse, "collapse", false, "PLANNED for v0.1.0 (D-13); invocation exits 64")
+	cmd.Flags().BoolVar(&fCollapse, "collapse", false, "PLANNED (D-13); invocation exits 64")
 	_ = cmd.Flags().MarkHidden("collapse")
 
 	root.AddCommand(cmd)
@@ -182,7 +182,7 @@ func runSearch(cmd *cobra.Command, args []string, sf searchFlags) error {
 	gql := args[0]
 
 	if sf.Collapse {
-		printf(out, "gseer search --collapse is PLANNED for v0.1.0 (D-13); invocation exits 64 per SPEC-03 §3.\n")
+		printf(out, "gseer search --collapse is PLANNED (D-13); invocation exits 64 per SPEC-03 §3.\n")
 		exitWith(ExitUsagePlanned)
 	}
 	fFacets := sf.Facets

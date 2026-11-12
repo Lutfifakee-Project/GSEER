@@ -53,6 +53,12 @@ moved, and no behavior was faked.
   overridden.  `search --validate`/`--explain` need no configuration
   and provision nothing; `doctor` on a fresh home reports the
   zero-config state read-only.
+- **Stale release stamps removed from user-facing errors.**  `gseer
+  scan`/`gseer asset` and the reserved `search --collapse` surface no
+  longer describe themselves with v0.1.0-era wording, and the GQL
+  refusal explanations no longer say "v0.0.1 ships …" — the running
+  v0.3.1 binary describes itself truthfully (message text only;
+  exit codes and refusal semantics unchanged).
 
 ## Added
 
@@ -108,8 +114,15 @@ moved, and no behavior was faked.
   behavior are untouched for correctness.
 - The restore example no longer says "atomic" (consistent with the
   recoverable-replacement wording everywhere else); stale
-  v0.1.0/v0.2.0 version stamps and examples are updated to v0.3.1; and
-  every installation instruction teaches the same
+  v0.1.0/v0.2.0 version stamps and examples are updated to v0.3.1 —
+  this sweep now includes `docs/DEPLOYMENT.md` (evidence classes
+  re-verified live against the v0.3.1 binary on PostgreSQL 16.15 this
+  cycle; the exit-code table gains the honest generic exit-1 row) and
+  `docs/UPDATE.md` (manifest examples, present-tense channel note,
+  contiguous §6 numbering); the README troubleshooting separates the
+  client-profile `E_CLIENT_ONLY` refusal from personal mode's
+  `E_PROFILE_UNSUPPORTED` on `gseer host` (self-hosted-only in this
+  release); and every installation instruction teaches the same
   `go install -v github.com/Lutfifakee-Project/gseer/cmd/gseer@latest`
   command.
 
@@ -120,6 +133,14 @@ moved, and no behavior was faked.
 - The module-path fix matters to anyone who installs from source:
   the lowercase path is the one that resolves — use the documented
   `go install` command verbatim.
+- Transitional install note (verified this cycle): until the v0.3.1
+  tag is published, the documented `@latest` command errors out — tag
+  resolution picks the v0.3.0 tag, whose `go.mod` still declares the
+  UPPERCASE module path (the exact mismatch v0.3.1 fixes).  Interim
+  installs that work today: `go install …/cmd/gseer@main` (verified:
+  fresh proxy install, honest "unknown" VCS fields) or a source
+  build.  Once v0.3.1 is the latest tag, `@latest` resolves it by the
+  same resolution rule that today picks v0.3.0.
 
 ## Verification
 
@@ -130,10 +151,15 @@ moved, and no behavior was faked.
   isolated home (49/49 assertions).
 - Windows: the two CI failures are fixed and the full
   `go test -count=1 ./...` suite passes on windows-latest — first green
-  on the fix commit (CI run 43153349926), re-confirmed on this exact
-  commit by GitHub Actions run #32
-  (https://github.com/Lutfifakee-Project/gseer/actions/runs/43163565189):
-  Go 1.26.x/1.27.x build & test, the windows full-suite job, lint,
-  govulncheck, the goreleaser release-config check, Search ≠ Scan, and
-  the PostgreSQL 16/17 integrations all green.
+  on the fix commit (CI run 43153349926), re-confirmed on the
+  release-content commit by GitHub Actions run #32
+  (https://github.com/Lutfifakee-Project/gseer/actions/runs/43163565189)
+  and on the metadata parent of this candidate by run #33
+  (https://github.com/Lutfifakee-Project/gseer/actions/runs/43184608744)
+  — all ten jobs green in both (Go 1.26.x/1.27.x build & test, the
+  windows full-suite job, lint, govulncheck, the goreleaser
+  release-config check, Search ≠ Scan, and the PostgreSQL 16/17
+  integrations).  The pending-release commits after run #33 change
+  only docs and error-message text; the final tree is covered by the
+  local battery in the other bullets of this list.
 - Cross-compilation of all release targets succeeds.

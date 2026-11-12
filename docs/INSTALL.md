@@ -8,6 +8,17 @@ Install Go (latest version), then:
 go install -v github.com/Lutfifakee-Project/gseer/cmd/gseer@latest
 ```
 
+> **Until the v0.3.1 tag is published**, that `@latest` form errors out:
+> tag resolution picks the **v0.3.0** tag, whose `go.mod` still declares
+> the UPPERCASE module path — exactly the mismatch v0.3.1 fixes
+> ("module declares its path as `…/GSEER` but was required as `…/gseer`").
+> Interim installs that work today (verified): install the current
+> source with
+> `go install -v github.com/Lutfifakee-Project/gseer/cmd/gseer@main`,
+> or build from source (below).  Once v0.3.1 is the latest tag, `@latest`
+> resolves it — the same resolution rule that today picks v0.3.0 — and
+> the documented command works.
+
 The binary lands in `$(go env GOPATH)/bin` — put that on your `PATH` if
 it is not.  Nothing else is required for personal mode: the first
 `gseer` run creates the single-file database and config automatically
