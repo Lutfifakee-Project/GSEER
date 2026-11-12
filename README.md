@@ -23,8 +23,7 @@ No account, no API key, no hosted service. A query can only ever READ —
 searching never collects, and nothing collects unless you run it.
 
 Product principles: Easy to Use · Fully Self-Hosted · Local-First ·
-Accurate Search · Transparent Data Collection · Secure by Default ·
-Production-Ready · Independent Brand.
+Search ≠ Scan · Transparent Data Collection.
 
 ## 2. Installation
 
@@ -146,7 +145,7 @@ Connector register (verdicts enforced in code — see
 | --- | --- | --- |
 | `dns` | A/AAAA/CNAME/MX/NS answers for operator-named domains | **Operational** |
 | `ptr` | reverse-DNS (PTR) names for operator-named addresses | **Operational** (v0.3.0) |
-| `ip2asn` | ASN / network-owner enrichment (Team Cymru free community service, DNS interface) | **Operational** |
+| `ip2asn` | ASN / network-owner enrichment (public IP-to-ASN community service, DNS interface) | **Operational** |
 | `rdap` | RIR registration data | **Disabled** — provider terms do not grant indexing/redistribution yet |
 | `ct` | certificate-transparency aggregation | **Disabled** — no published terms covering indexing/reuse |
 
@@ -163,7 +162,7 @@ collection bookkeeping, suppression rules — lives in that one file, so:
 
 ```bash
 gseer db backup --out backup.db     # consistent snapshot (VACUUM INTO), 0600
-gseer db restore backup.db          # atomic replace, old file kept aside
+gseer db restore backup.db          # staged, validated, recoverable replacement; old DB kept aside
 # Move to another machine: copy gseer.db (and config.yaml), done.
 ```
 

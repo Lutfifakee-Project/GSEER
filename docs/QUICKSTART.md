@@ -204,7 +204,7 @@ still `client`, not a broken install.
 ```bash
 gseer doctor
 #   [ PASS ] config validity: loaded env-only (profile=self-hosted)
-#   [ PASS ] binary: version v0.2.0, …, sha256=…
+#   [ PASS ] binary: version v0.3.1, …, sha256=…
 #   [ PASS ] DB reachable: postgres://127.0.0.1:5432/gseer?sslmode=disable
 #   [ PASS ] PG version: PostgreSQL 17 (minimum 16)
 #   [ PASS ] migrations: at head v17
@@ -384,7 +384,7 @@ docker compose stop db       # stop PostgreSQL;  docker compose start db
   sequence, the fail-closed privilege audit, PostgreSQL policy.
 - `docs/INSTALL.md` — install methods, checksums, build from source.
 - `docs/DOCKER.md` — full db + server stack, backup/restore, recovery.
-- `docs/UPDATE.md` — signed updates + the v0.1.0 → v0.2.0 upgrade path.
+- `docs/UPDATE.md` — signed updates and the in-place binary upgrade path.
 - `docs/SOURCES.md` — connector terms register.  `docs/RULES.md` —
   fingerprint rule contributions.
 - `docs/ROADMAP.md` — what is live per release.

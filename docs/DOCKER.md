@@ -1,4 +1,4 @@
-# GSEER — Full Self-Hosted Docker Stack (v0.2.0)
+# GSEER — Full Self-Hosted Docker Stack
 
 The full stack is **two containers**: PostgreSQL 17 and the GSEER
 API + dashboard server.  Nothing else — no collector container (nothing

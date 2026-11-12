@@ -58,7 +58,7 @@ func (ctConnector) Kind() string { return "ct" }
 func (ctConnector) Review() Review {
 	return Review{
 		Verdict: ReviewDisabled,
-		Why:     "crt.sh publishes no terms covering automated collection or indexing/reuse of its aggregation; needs an explicit licence before enablement",
+		Why:     "the provider publishes no terms covering automated collection or indexing/reuse of its aggregation; needs an explicit licence before enablement",
 		DocRef:  "docs/SOURCES.md §A (Certificate Transparency)",
 	}
 }

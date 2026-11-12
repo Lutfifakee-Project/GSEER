@@ -65,7 +65,7 @@ func (rdapConnector) Kind() string { return "rdap" }
 func (rdapConnector) Review() Review {
 	return Review{
 		Verdict: ReviewDisabled,
-		Why:     "RIR registration-data terms (e.g. ARIN ToU, RIPE NCC T&C) do not grant indexing/redistribution; needs the provider's written authorization before enablement",
+		Why:     "RIR registration-data terms do not grant indexing/redistribution; needs the provider's written authorization before enablement",
 		DocRef:  "docs/SOURCES.md §B (RDAP)",
 	}
 }

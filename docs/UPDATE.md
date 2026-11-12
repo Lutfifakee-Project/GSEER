@@ -1,4 +1,4 @@
-# GSEER — Signed Update System (v0.1.0)
+# GSEER — Signed Update System
 
 `gseer update` upgrades a GSEER binary through a **signed update
 manifest**.  Trust is anchored in an Ed25519 public key **embedded in

@@ -14,7 +14,7 @@
 # You should have received a copy of the GNU Affero General Public License
 # along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-# GSEER Makefile — v0.0.2 (Phase 2, Passive Intelligence).
+# GSEER Makefile — v0.3.1.
 #
 # Targets required by M1 (Phase 1 plan §3 M1):
 #   build  — compile the gseer binary with version ldflags

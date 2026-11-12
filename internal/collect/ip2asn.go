@@ -66,8 +66,8 @@ func (ip2asnConnector) Kind() string { return "ip2asn" }
 func (ip2asnConnector) Review() Review {
 	return Review{
 		Verdict: ReviewEnabled,
-		Why:     "Team Cymru's free community IP-to-ASN service, DNS interface, conservative rates, answers cached in the index",
-		DocRef:  "docs/SOURCES.md §D (ASN/BGP — Team Cymru IP-to-ASN)",
+		Why:     "free community IP-to-ASN service over its DNS interface, conservative rates, answers cached in the index",
+		DocRef:  "docs/SOURCES.md §D (ASN/BGP IP-to-ASN)",
 	}
 }
 

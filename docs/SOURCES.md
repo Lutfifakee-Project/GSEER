@@ -20,10 +20,15 @@
 | `rdap` | RIR registration data (ARIN/RIPE NCC et al.) | **disabled** | terms do not grant indexing/redistribution; needs written authorization |
 | `ct` | crt.sh (Sectigo CT aggregation) | **disabled** | no published terms covering automated collection or indexing/reuse |
 
-Rejected outright (documented, no connector code): bgp.tools (scraping
-banned without a contract; bulk API is a paid product), RIPEstat
-(redistribution prohibited by the service T&C), Censys (account +
-commercial terms; indexing derived data not granted on free tiers).
+Rejected outright (documented, no connector code), described by
+rejection reason rather than by vendor — a rejected source is not part
+of this product's data supply chain and is not advertised here:
+BGP/aggregation dashboards whose HTML scraping may be banned without
+notice and whose bulk API is a paid product; registry-data aggregators
+whose T&C prohibit re-packaging, compiling and re-distributing the
+data; commercial internet-wide scanning / hosted asset-search services
+whose account + commercial terms do not grant indexing of derived data
+into third-party search products.
 
 ---
 
@@ -78,7 +83,7 @@ commercial terms; indexing derived data not granted on free tiers).
 3. **API key requirements**: none (anonymous per-query access).
 4. **License / terms of use**: each RIR applies its own registration-data
    terms — ARIN: https://www.arin.net/resources/registry/whois/tou/;
-   RIPE NCC data-service terms (and RIPEstat T&C for RIPEstat);
+   RIPE NCC data-service terms;
    APNIC/LACNIC/AFRINIC publish analogous whois/RDAP terms.
 5. **Permission for automated collection and indexing**: **not granted
    for GSEER's use**.  ARIN's ToU permits querying for enumerated
@@ -123,12 +128,11 @@ commercial terms; indexing derived data not granted on free tiers).
 3. **API key requirements**: none.
 4. **License / terms of use**: DNS is a protocol, not a licensed
    dataset; recursive resolution is the resolver's normal purpose.
-   Public resolvers that operators may configure publish acceptable-use
-   expectations for standard usage (Cloudflare 1.1.1.1, Google Public
-   DNS) — ordinary programmatic resolution is the service working as
-   intended.  Operators who point GSEER at a specific public resolver
-   are responsible for that provider's AUP; the default (system
-   resolver) is the operator's own infrastructure.
+   Public resolver services publish acceptable-use expectations for
+   standard usage — ordinary programmatic resolution is the service
+   working as intended.  Operators who point GSEER at a specific
+   public resolver are responsible for that provider's AUP; the
+   default (system resolver) is the operator's own infrastructure.
 5. **Permission for automated collection and indexing**: resolution
    answers (A/AAAA/CNAME/MX/NS records) are uncopyrighted protocol facts;
    GSEER records the factual answer with its lookup time.  Queries are
@@ -267,21 +271,26 @@ commercial terms; indexing derived data not granted on free tiers).
 
 ## Rejected / not implemented (watch list)
 
-- **bgp.tools** — HTML scraping "may be banned with no notice"; bulk
-  API is a paid product (starts £500/mo).  No connector.  Revisit only
-  with a contract.
-- **RIPEstat Data API** — T&C: "A User may not re-package, compile,
-  re-distribute the RIPEstat Service and any (or all) of the RIPEstat
-  Data"; commercial derivative use needs written permission.  Indexing
-  into GSEER = redistribution risk.  No connector.
-- **Censys** — account/API-key required; free tier terms do not grant
-  indexing of derived data into third-party search products.  No
-  connector.
-- **VirusTotal / Farsight DNSDB / CIRCL pDNS** (passive DNS databases) —
-  API keys and restrictive derived-data terms.  No connector.
-- **Cert Spotter (SSLMate) CT API** — free tier requires signup and
-  caps 100 queries/hour; commercial API terms.  Viable fallback if the
-  owner accepts account-based access; not actioned in v0.0.2.
+Rejection reasons are recorded by category, not by vendor name — the
+rejected services stay out of this product's supply chain, and the
+factual reasons below are what matters for any future re-review:
+
+- **BGP/aggregation dashboards with contract-only bulk access** — HTML
+  scraping may be banned with no notice; the bulk API is a paid
+  product.  No connector.  Revisit only with a contract.
+- **Registry-data aggregators with no-redistribution T&C** — the terms
+  prohibit re-packaging, compiling and re-distributing the data;
+  commercial derivative use needs written permission.  Indexing into
+  GSEER is redistribution risk.  No connector.
+- **Commercial internet-wide scanning / hosted asset-search services** —
+  account/API-key required; free-tier terms do not grant indexing of
+  derived data into third-party search products.  No connector.
+- **Commercial passive-DNS databases** — API keys required and
+  derived-data terms are restrictive.  No connector.
+- **Account-based certificate-transparency APIs** — the free tier
+  requires signup and hourly query caps; commercial API terms.  A
+  viable fallback if the owner accepts account-based access; not
+  actioned.
 
 ## How verdicts are enforced (architecture cross-reference)
 

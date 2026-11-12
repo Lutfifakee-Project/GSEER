@@ -1,4 +1,4 @@
-# GSEER — Fingerprint Rules (v0.1.0)
+# GSEER — Fingerprint Rules
 
 The fingerprint rule engine classifies technology evidence that a stored
 observation **already carries** into products with confidence. It is the

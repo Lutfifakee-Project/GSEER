@@ -49,10 +49,10 @@ when enabled (E_SOURCE_TERMS).
 
 Review verdicts live with the connectors:
   dns      reviewed-enabled  (operator-domain resolution)
-  ip2asn   reviewed-enabled  (Team Cymru IP-to-ASN, DNS interface)
+  ip2asn   reviewed-enabled  (public IP-to-ASN community service, DNS interface)
   ptr      reviewed-enabled  (reverse DNS via the operator's resolver)
   rdap     disabled          (RIR terms do not grant indexing/redistribution)
-  ct       disabled          (crt.sh publishes no terms covering indexing/reuse)`,
+  ct       disabled          (provider publishes no terms covering indexing/reuse)`,
 	}
 	source.AddCommand(newSourceListCmd(), newSourceAddCmd(), newSourceEnableCmd(true), newSourceEnableCmd(false))
 	root.AddCommand(source)
