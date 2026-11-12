@@ -156,7 +156,7 @@ func TestFreshInstallAcceptance(t *testing.T) {
 		t.Errorf("backup mode = %04o, want 0600", perm)
 	}
 
-	// 6. Restore — atomic replace; the data survives.
+	// 6. Restore — staged, validated, recoverable replacement; the data survives.
 	out = freshRun(t, bin, home, nil, "db", "restore", backup, "--yes")
 	if !strings.Contains(out, "restored") {
 		t.Errorf("restore output:\n%s", out)
