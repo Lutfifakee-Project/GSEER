@@ -127,8 +127,13 @@ moved, and no behavior was faked.
   `go vet` clean, `golangci-lint` 0 issues, `govulncheck` clean.
 - PostgreSQL 16 fail-hard battery green.
 - The tracked acceptance battery green against the real binary in an
-  isolated home.
+  isolated home (49/49 assertions).
 - Windows: the two CI failures are fixed and the full
-  `go test -count=1 ./...` suite passes on windows-latest (CI run
-  43153349926).
+  `go test -count=1 ./...` suite passes on windows-latest — first green
+  on the fix commit (CI run 43153349926), re-confirmed on this exact
+  commit by GitHub Actions run #32
+  (https://github.com/Lutfifakee-Project/gseer/actions/runs/43163565189):
+  Go 1.26.x/1.27.x build & test, the windows full-suite job, lint,
+  govulncheck, the goreleaser release-config check, Search ≠ Scan, and
+  the PostgreSQL 16/17 integrations all green.
 - Cross-compilation of all release targets succeeds.

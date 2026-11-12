@@ -134,6 +134,23 @@ behavior was faked.
   `db restore` guarantees, where the previous database is preserved,
   and how the operator recovers from a failed or wrong-file restore.
 
+### Verified (release evidence)
+
+- Linux: full suite green (`go test -count=1 ./...`), `-race` clean,
+  `go vet` clean, `golangci-lint` 0 issues, `govulncheck` clean.
+- PostgreSQL 16 fail-hard battery green.
+- The tracked acceptance battery green against the real binary in an
+  isolated home (49/49 assertions).
+- Windows: the two CI failures are fixed and the full
+  `go test -count=1 ./...` suite passes on windows-latest — first green
+  on the fix commit (CI run 43153349926), re-confirmed on this exact
+  pending-release commit by GitHub Actions run #32
+  (https://github.com/Lutfifakee-Project/gseer/actions/runs/43163565189):
+  Go 1.26.x/1.27.x build & test, the windows full-suite job, lint,
+  govulncheck, the goreleaser release-config check, Search ≠ Scan, and
+  the PostgreSQL 16/17 integrations all green.
+- Cross-compilation of all release targets succeeds.
+
 ## [v0.3.0] — Zero-Config First Run, Personal Collection, New Identity
 
 Positioning rename: GSEER is the **internet-asset search engine** (the
