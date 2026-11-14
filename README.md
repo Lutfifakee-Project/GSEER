@@ -3,7 +3,6 @@
 ![GSEER banner](docs/assets/banner.png)
 
 > **GSEER — internet-asset search engine**
-> Search internet assets. Collect authorized data. Store locally. Search easily.
 
 [![CI](https://github.com/Lutfifakee-Project/gseer/actions/workflows/ci.yml/badge.svg)](https://github.com/Lutfifakee-Project/gseer/actions/workflows/ci.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](LICENSE)
